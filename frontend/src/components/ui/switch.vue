@@ -1,0 +1,1 @@
+/Users/tian/Codes/lab-system-demo-go/frontend/src/components/ui/switch/index.vue

@@ -1,0 +1,785 @@
+package handlers
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strconv"
+	"time"
+
+	"lab-system-backend/internal/database"
+	"lab-system-backend/internal/models"
+
+	"github.com/gin-gonic/gin"
+)
+
+// --- Reagent Catalog ---
+
+func GetReagentCatalogs(c *gin.Context) {
+	var catalogs []models.ReagentCatalog
+	tx := database.DB
+
+	// 搜索过滤：按名称、CAS、别称模糊匹配
+	if search := c.Query("search"); search != "" {
+		q := "%" + search + "%"
+		tx = tx.Where("name LIKE ? OR cas_number LIKE ? OR aliases LIKE ? OR alias LIKE ?", q, q, q, q)
+	}
+
+	// 标签过滤：chemical_labels JSON 中包含该标签
+	if label := c.Query("label"); label != "" {
+		tx = tx.Where("chemical_labels LIKE ?", "%"+label+"%")
+	}
+
+	if err := tx.Find(&catalogs).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, catalogs)
+}
+
+// GetReagentDashboardStats returns aggregated metrics and recent logs for the dashboard
+func GetReagentDashboardStats(c *gin.Context) {
+	var totalItems int64
+	var inStorageItems int64
+	var pendingRequests int64
+	var lowStockAlerts int64
+
+	database.DB.Model(&models.ReagentItem{}).Where("status != ?", "已耗尽").Count(&totalItems)
+	database.DB.Model(&models.ReagentItem{}).Where("status = ?", "在库").Count(&inStorageItems)
+	database.DB.Model(&models.ReagentRequest{}).Where("status = ?", "待处理").Count(&pendingRequests)
+
+	// Low Stock Alert (Checking catalogs against active items count)
+	// For simplicity, count how many catalogs have fewer active items than their threshold
+	// Assuming AlertThreshold > 0
+	type CatalogStock struct {
+		ID             uint
+		Name           string
+		AlertThreshold int
+		Count          int
+	}
+	var stocks []CatalogStock
+
+	// Complex query simplified: get all items grouped by catalog, compare with catalog threshold
+	database.DB.Raw(`
+		SELECT c.id, c.name, c.alert_threshold, COUNT(i.uuid) as count
+		FROM reagent_catalogs c
+		LEFT JOIN reagent_items i ON c.id = i.reagent_catalog_id AND i.status != '已耗尽'
+		WHERE c.deleted_at IS NULL
+		GROUP BY c.id, c.name, c.alert_threshold
+		HAVING COUNT(i.uuid) <= c.alert_threshold AND c.alert_threshold > 0
+	`).Scan(&stocks)
+	lowStockAlerts = int64(len(stocks))
+
+	// Get Recent Activity Logs (last 5)
+	var recentLogs []models.ReagentLog
+	database.DB.Preload("User").Preload("ReagentItem.ReagentCatalog").
+		Order("created_at desc").Limit(5).Find(&recentLogs)
+
+	// categoryDistribution for charts
+	type CategoryStat struct {
+		Category string `json:"category"`
+		Count    int    `json:"count"`
+	}
+	var catStats []CategoryStat
+	database.DB.Raw(`
+		SELECT c.category, COUNT(i.uuid) as count 
+		FROM reagent_items i 
+		JOIN reagent_catalogs c ON i.reagent_catalog_id = c.id 
+		WHERE i.status != '已耗尽' 
+		GROUP BY c.category
+	`).Scan(&catStats)
+
+	// recentUsageTrend (last 7 days consumption)
+	type TrendStat struct {
+		Date  string `json:"date"`
+		Count int    `json:"count"`
+	}
+	var trendStats []TrendStat
+
+	// SQLite specific date truncation for trend line (counting how many items were 'used' per day)
+	database.DB.Raw(`
+		SELECT strftime('%Y-%m-%d', created_at) as date, COUNT(*) as count
+		FROM reagent_logs 
+		WHERE action = '空瓶核销' AND created_at >= date('now', '-7 days')
+		GROUP BY date
+		ORDER BY date ASC
+	`).Scan(&trendStats)
+
+	c.JSON(http.StatusOK, gin.H{
+		"total_items":           totalItems,
+		"in_storage_items":      inStorageItems,
+		"pending_requests":      pendingRequests,
+		"low_stock_alerts":      lowStockAlerts,
+		"recent_logs":           recentLogs,
+		"alerts":                stocks,
+		"category_distribution": catStats,
+		"recent_usage_trend":    trendStats,
+	})
+}
+
+func CreateReagentCatalog(c *gin.Context) {
+	var input models.ReagentCatalog
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := database.DB.Create(&input).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, input)
+}
+
+func UpdateReagentCatalog(c *gin.Context) {
+	id := c.Param("id")
+	var catalog models.ReagentCatalog
+	if err := database.DB.First(&catalog, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "品目不存在"})
+		return
+	}
+
+	var input models.ReagentCatalog
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 更新可修改的字段
+	catalog.Name = input.Name
+	catalog.CASNumber = input.CASNumber
+	catalog.Alias = input.Alias
+	catalog.Formula = input.Formula
+	catalog.Category = input.Category
+	catalog.IsControlled = input.IsControlled
+	catalog.Description = input.Description
+	catalog.Storage = input.Storage
+	catalog.AlertThreshold = input.AlertThreshold
+	catalog.Unit = input.Unit
+	catalog.ChemicalLabels = input.ChemicalLabels
+	catalog.Aliases = input.Aliases
+	catalog.StorageCondition = input.StorageCondition
+	catalog.PhysicalState = input.PhysicalState
+
+	// 根据标签自动判断 IsControlled
+	if catalog.ChemicalLabels != "" && catalog.ChemicalLabels != "[]" && catalog.ChemicalLabels != "[\"普通化学品\"]" {
+		catalog.IsControlled = true
+	}
+
+	if err := database.DB.Save(&catalog).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, catalog)
+}
+
+func DeleteReagentCatalog(c *gin.Context) {
+	id := c.Param("id")
+	if err := database.DB.Delete(&models.ReagentCatalog{}, id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "品目已删除"})
+}
+
+// StockCheck 查询某试剂的库存概况，供申购/审核时参考
+func StockCheck(c *gin.Context) {
+	casNumber := c.Query("cas_number")
+	name := c.Query("name")
+
+	if casNumber == "" && name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请提供 cas_number 或 name 参数"})
+		return
+	}
+
+	// 查找品目
+	var catalog models.ReagentCatalog
+	tx := database.DB
+	if casNumber != "" {
+		tx = tx.Where("cas_number = ?", casNumber)
+	} else {
+		tx = tx.Where("name LIKE ? OR aliases LIKE ?", "%"+name+"%", "%"+name+"%")
+	}
+	if err := tx.First(&catalog).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "未找到匹配的品目"})
+		return
+	}
+
+	// 在库数量
+	var inStock int64
+	database.DB.Model(&models.ReagentItem{}).
+		Where("reagent_catalog_id = ? AND status = ?", catalog.ID, "在库").
+		Count(&inStock)
+
+	// 待到货数量（已批准或采购中的申购单的总瓶数）
+	var pendingArrival int64
+	database.DB.Model(&models.ReagentRequest{}).
+		Where("reagent_catalog_id = ? AND status IN (?, ?)", catalog.ID, "采购中", "已到货").
+		Select("COALESCE(SUM(quantity), 0)").Scan(&pendingArrival)
+
+	// 待审申购数量
+	var pendingRequests int64
+	database.DB.Model(&models.ReagentRequest{}).
+		Where("reagent_catalog_id = ? AND status = ?", catalog.ID, "待处理").
+		Count(&pendingRequests)
+
+	// 最近消耗时间
+	var lastConsumed string
+	database.DB.Model(&models.ReagentLog{}).
+		Joins("JOIN reagent_items ri ON ri.uuid = reagent_logs.reagent_item_id").
+		Where("ri.reagent_catalog_id = ? AND reagent_logs.action = ?", catalog.ID, "空瓶核销").
+		Order("reagent_logs.created_at DESC").
+		Limit(1).
+		Pluck("strftime('%Y-%m-%d', reagent_logs.created_at)", &lastConsumed)
+
+	// 简易 AI 建议（基于规则）
+	advice := ""
+	if inStock == 0 && pendingArrival == 0 {
+		advice = "⚠️ 当前零库存，建议尽快审批采购"
+	} else if inStock <= int64(catalog.AlertThreshold) {
+		advice = "⚠️ 库存已低于预警阈值（" + fmt.Sprintf("%d", catalog.AlertThreshold) + " 瓶），建议优先审批"
+	} else if inStock >= 10 {
+		advice = "✅ 库存充足，建议评估是否有必要新增采购"
+	} else {
+		advice = "📦 库存正常，可按需采购"
+	}
+
+	// 管控品额外提示
+	if catalog.IsControlled {
+		advice += "｜🔒 该试剂为管控品，采购需双人审批"
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"catalog": gin.H{
+			"id":              catalog.ID,
+			"name":            catalog.Name,
+			"cas_number":      catalog.CASNumber,
+			"chemical_labels": catalog.ChemicalLabels,
+			"unit":            catalog.Unit,
+			"is_controlled":   catalog.IsControlled,
+		},
+		"in_stock":         inStock,
+		"pending_arrival":  pendingArrival,
+		"pending_requests": pendingRequests,
+		"last_consumed_at": lastConsumed,
+		"advice":           advice,
+	})
+}
+
+// --- Reagent Requests ---
+
+func GetReagentRequests(c *gin.Context) {
+	var requests []models.ReagentRequest
+	if err := database.DB.Preload("ReagentCatalog").Preload("Requestor").Find(&requests).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, requests)
+}
+
+func CreateReagentRequest(c *gin.Context) {
+	var input models.ReagentRequest
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Set default status
+	input.Status = "待处理"
+
+	// Assuming RequestorID is passed or retrieved from context (mocking for now)
+	if input.RequestorID == 0 {
+		input.RequestorID = 1 // Default to Admin for demo
+	}
+
+	if err := database.DB.Create(&input).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, input)
+}
+
+// ApproveReagentRequest transitions a request from Pending to Purchasing
+func ApproveReagentRequest(c *gin.Context) {
+	id := c.Param("id")
+	var req models.ReagentRequest
+
+	if err := database.DB.First(&req, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Request not found"})
+		return
+	}
+
+	if req.Status != "待处理" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Only pending requests can be approved"})
+		return
+	}
+
+	req.Status = "采购中"
+	if err := database.DB.Save(&req).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to approve request"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Request approved for purchasing"})
+}
+
+// FulfillRequest generates ReagentItems from a request
+func FulfillReagentRequest(c *gin.Context) {
+	id := c.Param("id")
+	var req models.ReagentRequest
+
+	tx := database.DB.Begin()
+
+	if err := tx.First(&req, id).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusNotFound, gin.H{"error": "Request not found"})
+		return
+	}
+
+	if req.Status == "已入库" {
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Request already fulfilled"})
+		return
+	}
+
+	// Parse capacity from unit (mock logic: basic extraction of numbers)
+	var capacity float64 = 0
+	unitStr := req.ReagentCatalog.Unit
+	if unitStr != "" {
+		// Just strip non-numeric for a simple mock parsing, e.g., "500ml" -> 500
+		numStr := ""
+		for _, c := range unitStr {
+			if c >= '0' && c <= '9' || c == '.' {
+				numStr += string(c)
+			}
+		}
+		if parsed, err := strconv.ParseFloat(numStr, 64); err == nil {
+			capacity = parsed
+		} else {
+			capacity = 500 // fallback
+		}
+	} else {
+		capacity = 500 // Fallback default
+	}
+
+	// Create N items
+	for i := 0; i < req.Quantity; i++ {
+		item := models.ReagentItem{
+			ReagentRequestID: req.ID,
+			ReagentCatalogID: req.ReagentCatalogID,
+			Status:           "已到货",
+			Location:         "分拣区(临时区)",
+			Capacity:         capacity,
+			RemainingVolume:  capacity,
+			ExpiryDate:       time.Now().AddDate(1, 0, 0), // 默认一年有效期
+		}
+		if err := tx.Create(&item).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create items"})
+			return
+		}
+
+		// Create Log (Mock UserID 1 for now)
+		log := models.ReagentLog{
+			ReagentItemID: item.UUID,
+			UserID:        1,
+			Action:        "入库登记",
+			Quantity:      capacity,
+			Remarks:       "通过申购单 #" + strconv.Itoa(int(req.ID)) + " 到货",
+		}
+		if err := tx.Create(&log).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create logs"})
+			return
+		}
+	}
+
+	// Update request status to Arrived (Not InStorage yet)
+	req.Status = "已到货"
+	if err := tx.Save(&req).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update request status"})
+		return
+	}
+
+	tx.Commit()
+	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Successfully generated %d items", req.Quantity)})
+}
+
+// --- Reagent Items (Inventory) ---
+
+// GetTeamInventory 按团队分组返回在库试剂台账
+func GetTeamInventory(c *gin.Context) {
+	// 支持按团队筛选
+	departmentID := c.Query("department_id")
+
+	// 查询在库 items
+	var items []models.ReagentItem
+
+	tx := database.DB.
+		Preload("ReagentCatalog").
+		Preload("Cabinet").
+		Preload("ReagentRequest").
+		Preload("ReagentRequest.Requestor").
+		Preload("ReagentRequest.Requestor.Department").
+		Where("reagent_items.status = ?", "在库")
+
+	if departmentID != "" {
+		// JOIN 到 user 表过滤团队
+		tx = tx.Joins("JOIN reagent_requests rr ON rr.id = reagent_items.reagent_request_id").
+			Joins("JOIN users u ON u.id = rr.requestor_id").
+			Where("u.department_id = ?", departmentID)
+	}
+
+	if err := tx.Find(&items).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 按团队分组
+	type TeamGroup struct {
+		DepartmentID   uint                 `json:"department_id"`
+		DepartmentName string               `json:"department_name"`
+		Items          []models.ReagentItem `json:"items"`
+		TotalCount     int                  `json:"total_count"`
+	}
+
+	groupMap := make(map[uint]*TeamGroup)
+	for _, item := range items {
+		var deptID uint = 0
+		var deptName string = "公共库 / 未分配所属团队"
+
+		if item.ReagentRequest.ID != 0 && item.ReagentRequest.Requestor.ID != 0 && item.ReagentRequest.Requestor.Department.ID != 0 {
+			deptID = item.ReagentRequest.Requestor.DepartmentID
+			deptName = item.ReagentRequest.Requestor.Department.Name
+		}
+
+		if _, ok := groupMap[deptID]; !ok {
+			groupMap[deptID] = &TeamGroup{
+				DepartmentID:   deptID,
+				DepartmentName: deptName,
+				Items:          []models.ReagentItem{},
+			}
+		}
+		groupMap[deptID].Items = append(groupMap[deptID].Items, item)
+		groupMap[deptID].TotalCount++
+	}
+
+	// 转换为有序 slice
+	result := []*TeamGroup{}
+	for _, g := range groupMap {
+		result = append(result, g)
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+func GetReagentItems(c *gin.Context) {
+	var items []models.ReagentItem
+	tx := database.DB.Preload("ReagentCatalog").Preload("Cabinet").Preload("ReagentRequest").Preload("ReagentRequest.Requestor")
+
+	// Optional Query Params
+	if status := c.Query("status"); status != "" {
+		tx = tx.Where("status = ?", status)
+	}
+	if requestID := c.Query("request_id"); requestID != "" {
+		tx = tx.Where("reagent_request_id = ?", requestID)
+	}
+	if err := tx.Order("created_at DESC").Find(&items).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, items)
+}
+
+func GetReagentItemByUUID(c *gin.Context) {
+	uuid := c.Param("uuid")
+	var item models.ReagentItem
+	if err := database.DB.Preload("ReagentCatalog").Preload("Cabinet").Where("uuid = ?", uuid).First(&item).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
+func UpdateReagentItemStatus(c *gin.Context) {
+	uuid := c.Param("uuid")
+	var input struct {
+		Status    string `json:"status"`
+		Location  string `json:"location"`
+		CabinetID uint   `json:"cabinet_id"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var item models.ReagentItem
+	if err := database.DB.Where("uuid = ?", uuid).First(&item).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
+		return
+	}
+
+	// Determine Action for logging based on status change
+	action := "变更信息"
+	remarks := ""
+	if input.Status != "" && input.Status != item.Status {
+		item.Status = input.Status
+		switch item.Status {
+		case "在库":
+			action = "扫码入库"
+			cabinetHint := ""
+			if input.CabinetID > 0 {
+				cabinetHint = fmt.Sprintf("，放入试剂柜#%d", input.CabinetID)
+			}
+			remarks = "移至库位: " + input.Location + cabinetHint
+		case "已耗尽":
+			action = "空瓶核销"
+			remarks = "标记为耗尽并核销回收"
+			item.RemainingVolume = 0
+		default:
+			action = "状态变更"
+			remarks = "状态更改为 " + item.Status
+		}
+	}
+
+	if input.Location != "" && input.Location != item.Location {
+		item.Location = input.Location
+		if action == "变更信息" {
+			action = "库位移动"
+			remarks = "库位变更为 " + input.Location
+		}
+	}
+
+	if input.CabinetID > 0 {
+		item.CabinetID = input.CabinetID
+	}
+
+	if err := database.DB.Save(&item).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Create log entry if there was a meaningful change
+	if action != "变更信息" {
+		log := models.ReagentLog{
+			ReagentItemID: item.UUID,
+			UserID:        1, // Mock User ID
+			Action:        action,
+			Quantity:      0, // Keeping 0 for simple status updates for now
+			Remarks:       remarks,
+		}
+		if err := database.DB.Create(&log).Error; err != nil {
+			fmt.Printf("Failed to create log for item %s: %v\n", item.UUID, err)
+		}
+	}
+
+	// Check if this action completes the request's storage process
+	if item.Status == "在库" || item.Status == "已耗尽" {
+		var pendingItems int64
+		database.DB.Model(&models.ReagentItem{}).
+			Where("reagent_request_id = ? AND status = ?", item.ReagentRequestID, "已到货").
+			Count(&pendingItems)
+
+		if pendingItems == 0 {
+			// All items have been moved out of 'Arrived' state (presumably to 'InStorage')
+			database.DB.Model(&models.ReagentRequest{}).
+				Where("id = ?", item.ReagentRequestID).
+				Update("status", "已入库")
+		}
+	}
+
+	c.JSON(http.StatusOK, item)
+}
+
+// ConsumeReagentItem 记录试剂的使用和余量扣减
+func ConsumeReagentItem(c *gin.Context) {
+	uuid := c.Param("uuid")
+	var input struct {
+		ConsumeVolume float64 `json:"consume_volume"`
+		Remarks       string  `json:"remarks"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tx := database.DB.Begin()
+
+	var item models.ReagentItem
+	if err := tx.Where("uuid = ?", uuid).First(&item).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
+		return
+	}
+
+	if item.Status != "在库" {
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Only items '在库' can be consumed"})
+		return
+	}
+
+	if input.ConsumeVolume <= 0 {
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Consume volume must be positive"})
+		return
+	}
+
+	// Calculate new volume
+	newVolume := item.RemainingVolume - input.ConsumeVolume
+	if newVolume <= 0 {
+		newVolume = 0
+		item.Status = "已耗尽"
+	}
+	item.RemainingVolume = newVolume
+
+	if err := tx.Save(&item).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Log consumption
+	action := "领用消耗"
+	if item.Status == "已耗尽" {
+		action = "空瓶核销"
+	}
+	remarks := input.Remarks
+	if remarks == "" {
+		remarks = fmt.Sprintf("本次消耗 %.2f，剩余 %.2f", input.ConsumeVolume, newVolume)
+	}
+
+	log := models.ReagentLog{
+		ReagentItemID: item.UUID,
+		UserID:        1, // Mock User ID
+		Action:        action,
+		Quantity:      input.ConsumeVolume,
+		Remarks:       remarks,
+	}
+	if err := tx.Create(&log).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	tx.Commit()
+	c.JSON(http.StatusOK, item)
+}
+
+// --- AI Mock ---
+
+func ParseReagentRequestAI(c *gin.Context) {
+	var input struct {
+		Message string `json:"message"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "未配置 GEMINI_API_KEY"})
+		return
+	}
+
+	modelName := os.Getenv("GEMINI_MODEL_NAME")
+	if modelName == "" {
+		modelName = "gemini-1.5-flash"
+	}
+
+	// Call Real Gemini API
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", modelName, apiKey)
+
+	requestBody := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"parts": []map[string]interface{}{
+					{"text": input.Message},
+				},
+			},
+		},
+		"systemInstruction": map[string]interface{}{
+			"parts": []map[string]interface{}{
+				{"text": `You are a reagent parser in a laboratory system. 
+Parse the user's natural language request for reagents into JSON.
+You MUST reply with ONLY a JSON object exactly matching this schema:
+{
+  "parsed_catalog": {
+    "cas_number": "string (CAS format, e.g., 67-64-1)",
+    "name": "string (Reagent name in Chinese, e.g., 丙酮)",
+    "unit": "string (e.g., 500ml, 1kg, 1box)",
+    "is_controlled": boolean (true if hazardous/controlled)
+  },
+  "quantity": integer,
+  "request_type": "string (enum: 日常, 储备, 紧急, default: 日常)",
+  "expected_delivery": "string (YYYY-MM-DD or fuzzy like '尽快', '下周' etc)",
+  "project_name": "string (Associated project name)",
+  "project_id": "string (Associated project code or ID)",
+  "confidence": float (between 0.0 and 1.0)
+}`},
+			},
+		},
+		"generationConfig": map[string]interface{}{
+			"responseMimeType": "application/json",
+		},
+	}
+
+	reqBytes, err := json.Marshal(requestBody)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encode request"})
+		return
+	}
+
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+	}
+	resp, err := client.Post(url, "application/json", bytes.NewBuffer(reqBytes))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI 请求失败: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("AI 接口返回错误 HTTP %d: %s", resp.StatusCode, string(bodyBytes))})
+		return
+	}
+
+	var geminiResp struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法解析 AI 响应数据"})
+		return
+	}
+
+	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI 没有返回有效内容"})
+		return
+	}
+
+	jsonText := geminiResp.Candidates[0].Content.Parts[0].Text
+
+	// Parse JSON strictly into map
+	var parsedResult map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonText), &parsedResult); err != nil {
+		fmt.Println("Failed to parse Gemini JSON:", jsonText)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI 返回的数据格式不正确"})
+		return
+	}
+
+	c.JSON(http.StatusOK, parsedResult)
+}

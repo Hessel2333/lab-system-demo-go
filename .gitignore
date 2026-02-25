@@ -1,0 +1,47 @@
+# ===========================
+# 环境变量 & 敏感信息 (绝对不能提交)
+# ===========================
+backend/.env
+.env
+.env.local
+
+# ===========================
+# Go 编译产物
+# ===========================
+backend/lab-system-backend
+backend/main
+backend/server
+backend/*.exe
+backend/data/*.db-shm
+backend/data/*.db-wal
+# 注意：data/lab_system.db 保留提交，方便开发者开箱即用
+
+# ===========================
+# 前端构建产物
+# ===========================
+frontend/dist/
+frontend/node_modules/
+frontend/.npm-cache/
+
+# ===========================
+# 参考/迁移来源代码（不影响本项目运行）
+# ===========================
+reference/
+
+# ===========================
+# IDE & 系统文件
+# ===========================
+.DS_Store
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ===========================
+# Go 构建缓存
+# ===========================
+backend/.cache/
+backend/.modcache/
+backend/.tmp/
