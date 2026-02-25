@@ -300,16 +300,24 @@ const trendOption = computed(() => {
                  </div>
              </Card>
              <Card class="col-span-3">
-                 <div class="p-6">
-                     <h3 class="font-semibold text-lg mb-4">系统消息</h3>
-                      <div class="space-y-4">
-                          <div v-if="stats.alerts.length === 0" class="text-sm text-gray-500 text-center py-8">
-                              暂无需要处理的系统告警。
+                 <div class="p-5">
+                     <h3 class="font-semibold text-lg mb-3 flex items-center justify-between">
+                         <span class="flex items-center gap-2">系统消息 <span v-if="stats.alerts.length > 0" class="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full">{{ stats.alerts.length }}</span></span>
+                     </h3>
+                      <div class="space-y-3 max-h-[280px] overflow-y-auto pr-2" style="scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent;">
+                          <div v-if="stats.alerts.length === 0" class="text-sm text-gray-400 text-center py-10 bg-gray-50 rounded-lg">
+                              ✅ 暂无需要处理的系统告警。
                           </div>
-                          <div v-for="alert in stats.alerts" :key="alert.ID" class="flex items-center border-l-4 border-orange-500 bg-orange-50 p-3 rounded-r-md">
-                              <span class="text-sm text-orange-800">
-                                试剂 "{{ alert.Name }}" 的库存低于预警线 (当前剩余: {{ alert.Count }}件, 阈值: {{ alert.AlertThreshold }}件)
-                              </span>
+                          <div v-for="alert in stats.alerts" :key="alert.ID" class="flex gap-3 items-start border-l-4 border-l-red-500 bg-red-50/50 p-3 rounded-r-md border border-y-red-100 border-r-red-100">
+                              <span class="text-lg leading-none mt-0.5" aria-hidden="true">⚠️</span>
+                              <div class="flex-1">
+                                <div class="text-[13px] font-medium text-red-900 leading-tight">
+                                  试剂 <span class="font-bold">"{{ alert.Name }}"</span> 的库存低于预警线
+                                </div>
+                                <div class="text-xs text-red-700/80 mt-1 font-mono">
+                                  剩余: <span class="font-bold text-red-600">{{ alert.Count }}</span> | 阈值: {{ alert.AlertThreshold }}
+                                </div>
+                              </div>
                           </div>
                       </div>
                  </div>

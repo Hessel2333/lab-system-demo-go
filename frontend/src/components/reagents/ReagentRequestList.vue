@@ -200,7 +200,10 @@ const getStatusColor = (status: string) => {
           <tbody>
             <template v-for="req in filteredRequests" :key="req.id">
               <!-- 主行 -->
-              <tr class="bg-white border-b hover:bg-gray-50" :class="inlineStoreOpen[req.id] ? 'border-b-0' : ''">
+              <tr class="bg-white hover:bg-gray-50"
+                  :class="[
+                    inlineStoreOpen[req.id] || (req.status === '待处理' && role === 'procurement' && stockMap[req.reagent_catalog_id]) ? 'border-b-0' : 'border-b'
+                  ]">
                 <td class="px-6 py-4 font-mono text-gray-500">#{{ req.id }}</td>
                 <td class="px-6 py-4 text-gray-700">
                     <span v-if="req.requestor?.real_name">{{ req.requestor.real_name }}</span>
@@ -209,8 +212,8 @@ const getStatusColor = (status: string) => {
                 <td class="px-6 py-4 font-medium text-gray-900">
                     {{ req.reagent_catalog?.name || '未知' }}
                     <span class="block text-xs text-gray-500 font-normal">{{ req.reagent_catalog?.cas_number }}</span>
-                    <!-- 采购角色库存状态微标签 -->
-                    <div v-if="role === 'procurement' && stockMap[req.reagent_catalog_id]" class="flex items-center gap-2 mt-1">
+                    <!-- 采购角色库存状态微标签 (仅在非待处理状态显示，避免与下方的 AI 建议面板重复) -->
+                    <div v-if="role === 'procurement' && stockMap[req.reagent_catalog_id] && req.status !== '待处理'" class="flex items-center gap-2 mt-1">
                       <span class="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium"
                             :class="stockMap[req.reagent_catalog_id].in_stock === 0 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'">
                         <Package class="w-2.5 h-2.5" />
@@ -253,16 +256,18 @@ const getStatusColor = (status: string) => {
                             入库
                         </Button>
 
+                        <!-- 采购审批决策辅助区块 -->
                         <Button
                           v-if="req.status === '待处理' && role === 'procurement'"
                           size="sm"
-                          class="bg-blue-600 hover:bg-blue-700 text-white"
+                          class="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
                           @click="approveRequest(req.id)"
                         >
                             审批并下单采购
                         </Button>
+
                         <Button
-                          v-if="req.status === '采购中' && role === 'procurement'"
+                          v-else-if="req.status === '采购中' && role === 'procurement'"
                           size="sm"
                           @click="fulfillRequest(req.id)"
                         >
@@ -282,7 +287,39 @@ const getStatusColor = (status: string) => {
                 </td>
               </tr>
 
-              <!-- 展开行：内联快速入库面板 -->
+              <!-- 展开行：AI 审批决策面板（采购员 + 待处理 + 有建议数据时展示） -->
+              <tr v-if="req.status === '待处理' && role === 'procurement' && stockMap[req.reagent_catalog_id]" class="border-b-2 border-indigo-100 bg-indigo-50/40">
+                <td colspan="7" class="px-6 py-2">
+                    <div class="flex items-center gap-4 whitespace-nowrap overflow-hidden">
+                        <div class="flex items-center gap-1.5 shrink-0 text-indigo-600 font-semibold text-xs text-nowrap">
+                            <span>🤖 AI 建议:</span>
+                        </div>
+
+                        <div class="flex items-center gap-2 shrink-0">
+                            <!-- 库存信息 Chips (已提至左侧) -->
+                            <span v-if="stockMap[req.reagent_catalog_id].in_stock !== undefined"
+                                  :class="['inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium border', stockMap[req.reagent_catalog_id].in_stock === 0 ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200']">
+                                在库 {{ stockMap[req.reagent_catalog_id].in_stock }}
+                            </span>
+                            <span v-if="stockMap[req.reagent_catalog_id].pending_arrival > 0"
+                                  class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium border bg-blue-100 text-blue-700 border-blue-200">
+                                在途 {{ stockMap[req.reagent_catalog_id].pending_arrival }}
+                            </span>
+                            <span v-if="stockMap[req.reagent_catalog_id].last_consumed_at"
+                                  class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium border bg-gray-100 text-gray-600 border-gray-200">
+                                消耗: {{ stockMap[req.reagent_catalog_id].last_consumed_at }}
+                            </span>
+                        </div>
+                        
+                        <!-- AI 建议文本 (随后的建议) -->
+                        <div v-if="stockMap[req.reagent_catalog_id].advice"
+                             class="flex-1 min-w-0 text-[11px] text-indigo-900 bg-indigo-100/60 border border-indigo-200 rounded px-2 py-0.5 truncate"
+                             :title="stockMap[req.reagent_catalog_id].advice">
+                            {{ stockMap[req.reagent_catalog_id].advice }}
+                        </div>
+                    </div>
+                </td>
+              </tr>
               <tr v-if="inlineStoreOpen[req.id]" class="border-b bg-purple-50">
                 <td colspan="7" class="px-6 py-3">
                     <div class="flex items-center gap-3 flex-wrap">

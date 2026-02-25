@@ -192,6 +192,7 @@ const onSearchInput = () => {
             <th class="px-4 py-3">物态</th>
             <th class="px-4 py-3">储存条件</th>
             <th class="px-4 py-3">规格</th>
+            <th class="px-4 py-3 text-right">预警线</th>
             <th class="px-4 py-3 text-right">操作</th>
           </tr>
         </thead>
@@ -219,6 +220,9 @@ const onSearchInput = () => {
               {{ cat.storage_condition || '-' }}
             </td>
             <td class="px-4 py-3 text-xs text-gray-600">{{ cat.unit }}</td>
+            <td class="px-4 py-3 text-right text-xs">
+              <span class="inline-block whitespace-nowrap font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-200 shadow-sm">{{ cat.alert_threshold }} 件</span>
+            </td>
             <td class="px-4 py-3 text-right">
               <div class="flex items-center justify-end gap-1">
                 <button @click="openEdit(cat)" class="p-1.5 rounded-md hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition">
@@ -312,15 +316,19 @@ const onSearchInput = () => {
               </div>
             </div>
 
-            <!-- Row 5: Storage Condition + Category -->
-            <div class="grid grid-cols-2 gap-4">
+            <!-- Row 5: Storage Condition + Position + Alert -->
+            <div class="grid grid-cols-3 gap-4">
               <div class="space-y-1.5">
                 <Label class="text-sm font-semibold">储存条件</Label>
-                <Input v-model="editForm.storage_condition" placeholder="如：阴凉干燥处,远离火源" class="h-10" />
+                <Input v-model="editForm.storage_condition" placeholder="如：阴凉干燥处" class="h-10" />
               </div>
               <div class="space-y-1.5">
                 <Label class="text-sm font-semibold">默认库位</Label>
                 <Input v-model="editForm.storage" placeholder="如：E309" class="h-10" />
+              </div>
+              <div class="space-y-1.5">
+                 <Label class="text-sm font-semibold">预警线 (件)</Label>
+                 <Input v-model.number="editForm.alert_threshold" type="number" min="0" placeholder="如：5" class="h-10" />
               </div>
             </div>
 
