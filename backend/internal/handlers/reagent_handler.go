@@ -286,8 +286,12 @@ func CreateReagentRequest(c *gin.Context) {
 		return
 	}
 
-	// Set default status
-	input.Status = "待处理"
+	var catalog models.ReagentCatalog
+	if err := database.DB.First(&catalog, input.ReagentCatalogID).Error; err == nil && catalog.IsControlled {
+		input.Status = "待审批" // 管控品走团队长审批
+	} else {
+		input.Status = "待采购" // 普通品直达采购员
+	}
 
 	// Assuming RequestorID is passed or retrieved from context (mocking for now)
 	if input.RequestorID == 0 {
@@ -301,7 +305,44 @@ func CreateReagentRequest(c *gin.Context) {
 	c.JSON(http.StatusCreated, input)
 }
 
-// ApproveReagentRequest transitions a request from Pending to Purchasing (BPM-A 闭环)
+func LeaderApproveReagentRequest(c *gin.Context) {
+	id := c.Param("id")
+	var req models.ReagentRequest
+
+	if err := database.DB.First(&req, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Request not found"})
+		return
+	}
+
+	if req.Status != "待审批" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "只有待审批状态的申请可以审核"})
+		return
+	}
+
+	var body struct {
+		Approved  bool   `json:"approved"`
+		RejectMsg string `json:"reject_msg"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if body.Approved {
+		req.Status = "待采购"
+	} else {
+		req.Status = "已驳回"
+		// req.LeaderRejectMsg = body.RejectMsg // 可扩展记录驳回原因
+	}
+
+	if err := database.DB.Save(&req).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update request format"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "审批完成"})
+}
+
+// MarkReagentRequestOrdered transitions a request from 待采购 to 已接单 (BPM-A 闭环)
 func ApproveReagentRequest(c *gin.Context) {
 	id := c.Param("id")
 	var req models.ReagentRequest
@@ -311,8 +352,8 @@ func ApproveReagentRequest(c *gin.Context) {
 		return
 	}
 
-	if req.Status != "待处理" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Only pending requests can be approved"})
+	if req.Status != "待采购" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "只有待采购的申请可以标记已接单"})
 		return
 	}
 
@@ -324,100 +365,17 @@ func ApproveReagentRequest(c *gin.Context) {
 	c.ShouldBindJSON(&body)
 
 	now := time.Now()
-	req.Status = "采购中"
+	req.Status = "已接单" // BPM-A 闭环节点
 	req.OrderReference = body.OrderReference
 	req.OrderAttachment = body.OrderAttachment
 	req.ClosedAt = &now
 
 	if err := database.DB.Save(&req).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to approve request"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to mark as ordered"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Request approved for purchasing", "closed_at": now})
-}
-
-// FulfillRequest generates ReagentItems from a request
-func FulfillReagentRequest(c *gin.Context) {
-	id := c.Param("id")
-	var req models.ReagentRequest
-
-	tx := database.DB.Begin()
-
-	if err := tx.First(&req, id).Error; err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusNotFound, gin.H{"error": "Request not found"})
-		return
-	}
-
-	if req.Status == "已入库" {
-		tx.Rollback()
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Request already fulfilled"})
-		return
-	}
-
-	// Parse capacity from unit (mock logic: basic extraction of numbers)
-	var capacity float64 = 0
-	unitStr := req.ReagentCatalog.Unit
-	if unitStr != "" {
-		// Just strip non-numeric for a simple mock parsing, e.g., "500ml" -> 500
-		numStr := ""
-		for _, c := range unitStr {
-			if c >= '0' && c <= '9' || c == '.' {
-				numStr += string(c)
-			}
-		}
-		if parsed, err := strconv.ParseFloat(numStr, 64); err == nil {
-			capacity = parsed
-		} else {
-			capacity = 500 // fallback
-		}
-	} else {
-		capacity = 500 // Fallback default
-	}
-
-	// Create N items
-	for i := 0; i < req.Quantity; i++ {
-		item := models.ReagentItem{
-			ReagentRequestID: req.ID,
-			ReagentCatalogID: req.ReagentCatalogID,
-			Status:           "已到货",
-			Location:         "分拣区(临时区)",
-			Capacity:         capacity,
-			RemainingVolume:  capacity,
-			ExpiryDate:       time.Now().AddDate(1, 0, 0), // 默认一年有效期
-		}
-		if err := tx.Create(&item).Error; err != nil {
-			tx.Rollback()
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create items"})
-			return
-		}
-
-		// Create Log (Mock UserID 1 for now)
-		log := models.ReagentLog{
-			ReagentItemID: item.UUID,
-			UserID:        1,
-			Action:        "入库登记",
-			Quantity:      capacity,
-			Remarks:       "通过申购单 #" + strconv.Itoa(int(req.ID)) + " 到货",
-		}
-		if err := tx.Create(&log).Error; err != nil {
-			tx.Rollback()
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create logs"})
-			return
-		}
-	}
-
-	// Update request status to Arrived (Not InStorage yet)
-	req.Status = "已到货"
-	if err := tx.Save(&req).Error; err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update request status"})
-		return
-	}
-
-	tx.Commit()
-	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Successfully generated %d items", req.Quantity)})
+	c.JSON(http.StatusOK, gin.H{"message": "已标记为接单/已下单", "closed_at": now})
 }
 
 // --- Reagent Items (Inventory) ---

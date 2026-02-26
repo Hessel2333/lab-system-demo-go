@@ -109,8 +109,8 @@ func main() {
 
 		api.GET("/reagents/requests", handlers.GetReagentRequests)
 		api.POST("/reagents/requests", handlers.CreateReagentRequest)
-		api.POST("/reagents/requests/:id/approve", handlers.ApproveReagentRequest)
-		api.POST("/reagents/requests/:id/fulfill", handlers.FulfillReagentRequest)
+		api.POST("/reagents/requests/:id/approve", handlers.ApproveReagentRequest)              // 采购员点击已下单
+		api.POST("/reagents/requests/:id/leader-approve", handlers.LeaderApproveReagentRequest) // 团队长审批管控品申购
 
 		api.GET("/reagents/items", handlers.GetReagentItems)
 		api.GET("/reagents/items/:uuid", handlers.GetReagentItemByUUID)

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { PackageCheck, Loader2, Search, Archive, Package } from 'lucide-vue-next'
+import { Loader2, Search, Package } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
 import Input from '@/components/ui/Input.vue'
@@ -14,7 +14,7 @@ const selectedRequest = ref<any>(null)
 const searchQuery = ref('')
 const statusFilter = ref('全部')
 
-const statusOptions = ['全部', '待处理', '采购中', '已到货', '已入库']
+const statusOptions = ['全部', '待审批', '待采购', '已接单', '已驳回']
 
 const props = defineProps({
     role: { type: String, default: 'researcher' }
@@ -108,48 +108,20 @@ const confirmApproveAndOrder = async () => {
         orderSubmitting.value = false
     }
 }
-
-const fulfillRequest = async (id: number) => {
+const leaderApprovingId = ref<number | null>(null)
+const leaderApprove = async (id: number, approved: boolean) => {
+    leaderApprovingId.value = id
     try {
-        await axios.post(`/api/reagents/requests/${id}/fulfill`)
-        toast("确认到货成功！试剂已存入【分拣区】，并生成系统二维码。")
+        await axios.post(`/api/reagents/requests/${id}/leader-approve`, {
+            approved,
+            reject_msg: ''
+        })
+        toast(approved ? '审批通过，已转交采购' : '已驳回申请')
         fetchRequests()
     } catch (error) {
-        toast("确认到货失败，请重试。", 'error')
-    }
-}
-
-// --- 快速入库逻辑 ---
-const quickLocations = ['E309', 'E307', 'F103', 'F309', 'B201']
-// 每个 req.id 对应一个展开状态和一个库位值
-const inlineStoreOpen = ref<Record<number, boolean>>({})
-const inlineLocation = ref<Record<number, string>>({})
-const inlineLoading = ref<Record<number, boolean>>({})
-
-const toggleInlineStore = (reqId: number) => {
-    inlineStoreOpen.value[reqId] = !inlineStoreOpen.value[reqId]
-    if (!inlineLocation.value[reqId]) inlineLocation.value[reqId] = ''
-}
-
-const quickStoreAll = async (req: any) => {
-    const location = inlineLocation.value[req.id]
-    if (!location) { toast('请先选择库位', 'error'); return }
-    inlineLoading.value[req.id] = true
-    try {
-        // 获取该申购单下所有已到货的 items
-        const res = await axios.get(`/api/reagents/items?request_id=${req.id}`)
-        const arrivedItems = res.data.filter((i: any) => i.status === '已到货')
-        if (arrivedItems.length === 0) { toast('该单暂无待入库条目', 'error'); return }
-        await Promise.all(arrivedItems.map((item: any) =>
-            axios.put(`/api/reagents/items/${item.uuid}/status`, { status: '在库', location })
-        ))
-        toast(`${arrivedItems.length} 瓶已入库至 ${location}`)
-        inlineStoreOpen.value[req.id] = false
-        fetchRequests()
-    } catch (e) {
-        toast('入库失败，请重试', 'error')
+        toast('审批操作失败', 'error')
     } finally {
-        inlineLoading.value[req.id] = false
+        leaderApprovingId.value = null
     }
 }
 
@@ -164,10 +136,10 @@ defineExpose({ fetchRequests })
 
 const getStatusColor = (status: string) => {
     const map: Record<string, string> = {
-        '待处理': 'bg-orange-100 text-orange-800',
-        '采购中': 'bg-blue-100 text-blue-800',
-        '已到货': 'bg-purple-100 text-purple-800',
-        '已入库': 'bg-green-100 text-green-800',
+        '待审批': 'bg-orange-100 text-orange-800',
+        '待采购': 'bg-blue-100 text-blue-800',
+        '已接单': 'bg-green-100 text-green-800',
+        '已驳回': 'bg-red-100 text-red-800',
     }
     return map[status] || 'bg-gray-100 text-gray-800'
 }
@@ -223,7 +195,7 @@ const getStatusColor = (status: string) => {
               <!-- 主行 -->
               <tr class="bg-white hover:bg-gray-50"
                   :class="[
-                    inlineStoreOpen[req.id] || (req.status === '待处理' && role === 'procurement' && stockMap[req.reagent_catalog_id]) ? 'border-b-0' : 'border-b'
+                    (req.status === '待采购' && role === 'procurement' && stockMap[req.reagent_catalog_id]) ? 'border-b-0' : 'border-b'
                   ]">
                 <td class="px-6 py-4 font-mono text-gray-500">#{{ req.id }}</td>
                 <td class="px-6 py-4 text-gray-700">
@@ -233,8 +205,8 @@ const getStatusColor = (status: string) => {
                 <td class="px-6 py-4 font-medium text-gray-900">
                     {{ req.reagent_catalog?.name || '未知' }}
                     <span class="block text-xs text-gray-500 font-normal">{{ req.reagent_catalog?.cas_number }}</span>
-                    <!-- 采购角色库存状态微标签 (仅在非待处理状态显示，避免与下方的 AI 建议面板重复) -->
-                    <div v-if="role === 'procurement' && stockMap[req.reagent_catalog_id] && req.status !== '待处理'" class="flex items-center gap-2 mt-1">
+                    <!-- 采购角色库存状态微标签 (仅在非待采购状态显示，避免与下方的 AI 建议面板重复) -->
+                    <div v-if="role === 'procurement' && stockMap[req.reagent_catalog_id] && req.status !== '待采购'" class="flex items-center gap-2 mt-1">
                       <span class="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium"
                             :class="stockMap[req.reagent_catalog_id].in_stock === 0 ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'">
                         <Package class="w-2.5 h-2.5" />
@@ -266,50 +238,48 @@ const getStatusColor = (status: string) => {
                             查看进度
                         </Button>
 
-                        <!-- 快速入库按钮：仅已到货时显示 -->
-                        <Button
-                          v-if="req.status === '已到货'"
-                          size="sm"
-                          @click="toggleInlineStore(req.id)"
-                          class="flex items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white"
-                        >
-                            <Archive class="w-3.5 h-3.5" />
-                            入库
-                        </Button>
+                        <!-- Leader 审批 -->
+                        <template v-if="req.status === '待审批' && role === 'leader'">
+                            <Button size="sm" class="bg-indigo-600 hover:bg-indigo-700 text-white" 
+                                :disabled="leaderApprovingId === req.id"
+                                @click="leaderApprove(req.id, true)">
+                                同意采购
+                            </Button>
+                            <Button size="sm" variant="outline" class="text-red-600 border-red-200 hover:bg-red-50"
+                                :disabled="leaderApprovingId === req.id"
+                                @click="leaderApprove(req.id, false)">
+                                驳回
+                            </Button>
+                        </template>
 
                         <!-- 采购审批决策辅助区块 -->
                         <Button
-                          v-if="req.status === '待处理' && role === 'procurement'"
+                          v-else-if="req.status === '待采购' && role === 'procurement'"
                           size="sm"
                           class="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
                           @click="openOrderDialog(req)"
                         >
-                            审批并下单采购
+                            标记为已接单
                         </Button>
 
-                        <Button
-                          v-else-if="req.status === '采购中' && role === 'procurement'"
-                          size="sm"
-                          @click="fulfillRequest(req.id)"
-                        >
-                            <PackageCheck class="w-4 h-4 mr-1" />
-                            确认到货并生成条码
-                        </Button>
-                        <span v-else-if="req.status === '待处理' && role !== 'procurement'" class="text-xs text-orange-500">
-                            等待采购审批
+                        <span v-else-if="req.status === '待审批'" class="text-xs text-orange-500">
+                            等待团队长审批
                         </span>
-                        <span v-else-if="req.status === '采购中' && role !== 'procurement'" class="text-xs text-blue-500">
-                            采购执行中
+                        <span v-else-if="req.status === '待采购'" class="text-xs text-blue-500">
+                            等待统一下单
                         </span>
-                        <span v-else-if="req.status === '已入库'" class="text-xs text-green-600">
-                            流程已完成
+                        <span v-else-if="req.status === '已接单'" class="text-xs text-green-600">
+                            BPM-A 已闭环
+                        </span>
+                        <span v-else-if="req.status === '已驳回'" class="text-xs text-red-600">
+                            已驳回
                         </span>
                     </div>
                 </td>
               </tr>
 
-              <!-- 展开行：AI 审批决策面板（采购员 + 待处理 + 有建议数据时展示） -->
-              <tr v-if="req.status === '待处理' && role === 'procurement' && stockMap[req.reagent_catalog_id]" class="border-b-2 border-indigo-100 bg-indigo-50/40">
+              <!-- 展开行：AI 审批决策面板（采购员 + 待采购 + 有建议数据时展示） -->
+              <tr v-if="req.status === '待采购' && role === 'procurement' && stockMap[req.reagent_catalog_id]" class="border-b-2 border-indigo-100 bg-indigo-50/40">
                 <td colspan="7" class="px-6 py-2">
                     <div class="flex items-center gap-4 whitespace-nowrap overflow-hidden">
                         <div class="flex items-center gap-1.5 shrink-0 text-indigo-600 font-semibold text-xs text-nowrap">
@@ -341,32 +311,7 @@ const getStatusColor = (status: string) => {
                     </div>
                 </td>
               </tr>
-              <tr v-if="inlineStoreOpen[req.id]" class="border-b bg-purple-50">
-                <td colspan="7" class="px-6 py-3">
-                    <div class="flex items-center gap-3 flex-wrap">
-                        <span class="text-xs text-purple-700 font-semibold shrink-0">快速入库 · 选择库位：</span>
-                        <div class="flex flex-wrap gap-1.5">
-                            <button v-for="loc in quickLocations" :key="loc"
-                                    @click="inlineLocation[req.id] = loc"
-                                    class="text-xs px-2.5 py-1 rounded-md border transition-all font-medium"
-                                    :class="inlineLocation[req.id] === loc
-                                        ? 'bg-purple-600 text-white border-purple-600'
-                                        : 'bg-white text-gray-600 border-gray-300 hover:border-purple-400'">
-                                📍 {{ loc }}
-                            </button>
-                        </div>
-                        <Input v-model="inlineLocation[req.id]" placeholder="或输入自定义库位..." class="h-8 text-xs w-44" />
-                        <button @click="quickStoreAll(req)"
-                                :disabled="!inlineLocation[req.id] || inlineLoading[req.id]"
-                                class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-purple-600 text-white hover:bg-purple-700 flex items-center gap-1 shrink-0">
-                            <Loader2 v-if="inlineLoading[req.id]" class="w-3 h-3 animate-spin" />
-                            <Archive v-else class="w-3 h-3" />
-                            确认全部入库
-                        </button>
-                        <button @click="inlineStoreOpen[req.id] = false" class="text-xs text-gray-400 hover:text-gray-600 ml-1">取消</button>
-                    </div>
-                </td>
-              </tr>
+
             </template>
           </tbody>
         </table>
@@ -394,7 +339,7 @@ const getStatusColor = (status: string) => {
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
           <!-- Header -->
           <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
-            <h3 class="text-white font-semibold text-base">审批并下单采购</h3>
+            <h3 class="text-white font-semibold text-base">标记已下单采购</h3>
             <p class="text-blue-100 text-xs mt-0.5">{{ orderDialogReqName }}</p>
           </div>
           <!-- Body -->
@@ -410,7 +355,7 @@ const getStatusColor = (status: string) => {
               <p class="text-[10px] text-gray-400 mt-1">可在外部平台下单后回填，也可以稍后补录</p>
             </div>
             <div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              <p class="text-xs text-amber-800">⚡ 确认后，此申购单状态将变更为「采购中」，BPM-A 闭环。</p>
+              <p class="text-xs text-amber-800">⚡ 确认后，此申购单状态将变更为「已接单」，BPM-A 需求闭环。</p>
             </div>
           </div>
           <!-- Footer -->
@@ -425,7 +370,7 @@ const getStatusColor = (status: string) => {
               @click="confirmApproveAndOrder"
             >
               <Loader2 v-if="orderSubmitting" class="w-3.5 h-3.5 animate-spin mr-1" />
-              确认审批并下单
+              确认标记已接单
             </Button>
           </div>
         </div>

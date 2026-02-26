@@ -1,0 +1,299 @@
+2026/02/26 09:28:13 Database connection established
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.023ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type='table' AND name="departments"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.060ms] [rows:2] SELECT sql FROM sqlite_master WHERE type IN ("table","index") AND tbl_name = "departments" AND sql IS NOT NULL order by type = "table" desc
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.022ms] [rows:-] SELECT * FROM `departments` LIMIT 1
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.014ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "departments" AND (sql LIKE "%CONSTRAINT ""fk_departments_children"" %" OR sql LIKE "%CONSTRAINT fk_departments_children %" OR sql LIKE "%CONSTRAINT `fk_departments_children`%" OR sql LIKE "%CONSTRAINT [fk_departments_children]%" OR sql LIKE "%CONSTRAINT 	fk_departments_children	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.006ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "departments" AND name = "idx_departments_deleted_at"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.005ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type='table' AND name="suppliers"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.025ms] [rows:2] SELECT sql FROM sqlite_master WHERE type IN ("table","index") AND tbl_name = "suppliers" AND sql IS NOT NULL order by type = "table" desc
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.010ms] [rows:-] SELECT * FROM `suppliers` LIMIT 1
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.006ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "suppliers" AND name = "idx_suppliers_deleted_at"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.005ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type='table' AND name="instruments"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.028ms] [rows:2] SELECT sql FROM sqlite_master WHERE type IN ("table","index") AND tbl_name = "instruments" AND sql IS NOT NULL order by type = "table" desc
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.010ms] [rows:-] SELECT * FROM `instruments` LIMIT 1
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.009ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "instruments" AND (sql LIKE "%CONSTRAINT ""fk_instruments_department"" %" OR sql LIKE "%CONSTRAINT fk_instruments_department %" OR sql LIKE "%CONSTRAINT `fk_instruments_department`%" OR sql LIKE "%CONSTRAINT [fk_instruments_department]%" OR sql LIKE "%CONSTRAINT 	fk_instruments_department	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.008ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "instruments" AND (sql LIKE "%CONSTRAINT ""fk_instruments_supplier"" %" OR sql LIKE "%CONSTRAINT fk_instruments_supplier %" OR sql LIKE "%CONSTRAINT `fk_instruments_supplier`%" OR sql LIKE "%CONSTRAINT [fk_instruments_supplier]%" OR sql LIKE "%CONSTRAINT 	fk_instruments_supplier	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.005ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "instruments" AND name = "idx_instruments_deleted_at"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.005ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type='table' AND name="reservations"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.024ms] [rows:2] SELECT sql FROM sqlite_master WHERE type IN ("table","index") AND tbl_name = "reservations" AND sql IS NOT NULL order by type = "table" desc
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.007ms] [rows:-] SELECT * FROM `reservations` LIMIT 1
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.005ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "reservations" AND name = "idx_reservations_deleted_at"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.010ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type='table' AND name="users"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.050ms] [rows:3] SELECT sql FROM sqlite_master WHERE type IN ("table","index") AND tbl_name = "users" AND sql IS NOT NULL order by type = "table" desc
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.013ms] [rows:-] SELECT * FROM `users` LIMIT 1
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.055ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "users" AND (sql LIKE "%CONSTRAINT ""fk_users_department"" %" OR sql LIKE "%CONSTRAINT fk_users_department %" OR sql LIKE "%CONSTRAINT `fk_users_department`%" OR sql LIKE "%CONSTRAINT [fk_users_department]%" OR sql LIKE "%CONSTRAINT 	fk_users_department	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.016ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "users" AND name = "idx_users_deleted_at"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.014ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "users" AND name = "idx_users_username"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.012ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type='table' AND name="user_qualifications"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.071ms] [rows:2] SELECT sql FROM sqlite_master WHERE type IN ("table","index") AND tbl_name = "user_qualifications" AND sql IS NOT NULL order by type = "table" desc
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.021ms] [rows:-] SELECT * FROM `user_qualifications` LIMIT 1
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.021ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "user_qualifications" AND (sql LIKE "%CONSTRAINT ""fk_user_qualifications_user"" %" OR sql LIKE "%CONSTRAINT fk_user_qualifications_user %" OR sql LIKE "%CONSTRAINT `fk_user_qualifications_user`%" OR sql LIKE "%CONSTRAINT [fk_user_qualifications_user]%" OR sql LIKE "%CONSTRAINT 	fk_user_qualifications_user	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.017ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "user_qualifications" AND (sql LIKE "%CONSTRAINT ""fk_user_qualifications_instrument"" %" OR sql LIKE "%CONSTRAINT fk_user_qualifications_instrument %" OR sql LIKE "%CONSTRAINT `fk_user_qualifications_instrument`%" OR sql LIKE "%CONSTRAINT [fk_user_qualifications_instrument]%" OR sql LIKE "%CONSTRAINT 	fk_user_qualifications_instrument	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.011ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "user_qualifications" AND name = "idx_user_qualifications_deleted_at"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.010ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type='table' AND name="reagent_catalogs"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.054ms] [rows:3] SELECT sql FROM sqlite_master WHERE type IN ("table","index") AND tbl_name = "reagent_catalogs" AND sql IS NOT NULL order by type = "table" desc
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.021ms] [rows:-] SELECT * FROM `reagent_catalogs` LIMIT 1
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.012ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "reagent_catalogs" AND name = "idx_reagent_catalogs_cas_number"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.010ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "reagent_catalogs" AND name = "idx_reagent_catalogs_deleted_at"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.010ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type='table' AND name="reagent_cabinets"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.050ms] [rows:2] SELECT sql FROM sqlite_master WHERE type IN ("table","index") AND tbl_name = "reagent_cabinets" AND sql IS NOT NULL order by type = "table" desc
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.014ms] [rows:-] SELECT * FROM `reagent_cabinets` LIMIT 1
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.012ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "reagent_cabinets" AND name = "idx_reagent_cabinets_deleted_at"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.009ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type='table' AND name="reagent_requests"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.050ms] [rows:2] SELECT sql FROM sqlite_master WHERE type IN ("table","index") AND tbl_name = "reagent_requests" AND sql IS NOT NULL order by type = "table" desc
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.017ms] [rows:-] SELECT * FROM `reagent_requests` LIMIT 1
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.024ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "reagent_requests" AND (sql LIKE "%CONSTRAINT ""fk_reagent_requests_requestor"" %" OR sql LIKE "%CONSTRAINT fk_reagent_requests_requestor %" OR sql LIKE "%CONSTRAINT `fk_reagent_requests_requestor`%" OR sql LIKE "%CONSTRAINT [fk_reagent_requests_requestor]%" OR sql LIKE "%CONSTRAINT 	fk_reagent_requests_requestor	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.056ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "reagent_requests" AND (sql LIKE "%CONSTRAINT ""fk_reagent_requests_reagent_catalog"" %" OR sql LIKE "%CONSTRAINT fk_reagent_requests_reagent_catalog %" OR sql LIKE "%CONSTRAINT `fk_reagent_requests_reagent_catalog`%" OR sql LIKE "%CONSTRAINT [fk_reagent_requests_reagent_catalog]%" OR sql LIKE "%CONSTRAINT 	fk_reagent_requests_reagent_catalog	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.028ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "reagent_requests" AND name = "idx_reagent_requests_deleted_at"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.015ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type='table' AND name="reagent_items"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.062ms] [rows:2] SELECT sql FROM sqlite_master WHERE type IN ("table","index") AND tbl_name = "reagent_items" AND sql IS NOT NULL order by type = "table" desc
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.021ms] [rows:-] SELECT * FROM `reagent_items` LIMIT 1
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.024ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "reagent_items" AND (sql LIKE "%CONSTRAINT ""fk_reagent_items_reagent_request"" %" OR sql LIKE "%CONSTRAINT fk_reagent_items_reagent_request %" OR sql LIKE "%CONSTRAINT `fk_reagent_items_reagent_request`%" OR sql LIKE "%CONSTRAINT [fk_reagent_items_reagent_request]%" OR sql LIKE "%CONSTRAINT 	fk_reagent_items_reagent_request	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.016ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "reagent_items" AND (sql LIKE "%CONSTRAINT ""fk_reagent_items_reagent_catalog"" %" OR sql LIKE "%CONSTRAINT fk_reagent_items_reagent_catalog %" OR sql LIKE "%CONSTRAINT `fk_reagent_items_reagent_catalog`%" OR sql LIKE "%CONSTRAINT [fk_reagent_items_reagent_catalog]%" OR sql LIKE "%CONSTRAINT 	fk_reagent_items_reagent_catalog	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.015ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "reagent_items" AND (sql LIKE "%CONSTRAINT ""fk_reagent_items_cabinet"" %" OR sql LIKE "%CONSTRAINT fk_reagent_items_cabinet %" OR sql LIKE "%CONSTRAINT `fk_reagent_items_cabinet`%" OR sql LIKE "%CONSTRAINT [fk_reagent_items_cabinet]%" OR sql LIKE "%CONSTRAINT 	fk_reagent_items_cabinet	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.010ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "reagent_items" AND name = "idx_reagent_items_deleted_at"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.010ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type='table' AND name="reagent_logs"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.049ms] [rows:2] SELECT sql FROM sqlite_master WHERE type IN ("table","index") AND tbl_name = "reagent_logs" AND sql IS NOT NULL order by type = "table" desc
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.014ms] [rows:-] SELECT * FROM `reagent_logs` LIMIT 1
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.015ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "reagent_logs" AND (sql LIKE "%CONSTRAINT ""fk_reagent_logs_reagent_item"" %" OR sql LIKE "%CONSTRAINT fk_reagent_logs_reagent_item %" OR sql LIKE "%CONSTRAINT `fk_reagent_logs_reagent_item`%" OR sql LIKE "%CONSTRAINT [fk_reagent_logs_reagent_item]%" OR sql LIKE "%CONSTRAINT 	fk_reagent_logs_reagent_item	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.014ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "reagent_logs" AND (sql LIKE "%CONSTRAINT ""fk_reagent_logs_user"" %" OR sql LIKE "%CONSTRAINT fk_reagent_logs_user %" OR sql LIKE "%CONSTRAINT `fk_reagent_logs_user`%" OR sql LIKE "%CONSTRAINT [fk_reagent_logs_user]%" OR sql LIKE "%CONSTRAINT 	fk_reagent_logs_user	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.009ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "reagent_logs" AND name = "idx_reagent_logs_deleted_at"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.009ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type='table' AND name="procurement_batches"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.049ms] [rows:2] SELECT sql FROM sqlite_master WHERE type IN ("table","index") AND tbl_name = "procurement_batches" AND sql IS NOT NULL order by type = "table" desc
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.016ms] [rows:-] SELECT * FROM `procurement_batches` LIMIT 1
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.022ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "procurement_batches" AND (sql LIKE "%CONSTRAINT ""fk_procurement_batches_uploader"" %" OR sql LIKE "%CONSTRAINT fk_procurement_batches_uploader %" OR sql LIKE "%CONSTRAINT `fk_procurement_batches_uploader`%" OR sql LIKE "%CONSTRAINT [fk_procurement_batches_uploader]%" OR sql LIKE "%CONSTRAINT 	fk_procurement_batches_uploader	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.017ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "procurement_batches" AND name = "idx_procurement_batches_deleted_at"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.009ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type='table' AND name="procurement_batch_items"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.048ms] [rows:2] SELECT sql FROM sqlite_master WHERE type IN ("table","index") AND tbl_name = "procurement_batch_items" AND sql IS NOT NULL order by type = "table" desc
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.015ms] [rows:-] SELECT * FROM `procurement_batch_items` LIMIT 1
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.015ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "procurement_batch_items" AND (sql LIKE "%CONSTRAINT ""fk_procurement_batches_items"" %" OR sql LIKE "%CONSTRAINT fk_procurement_batches_items %" OR sql LIKE "%CONSTRAINT `fk_procurement_batches_items`%" OR sql LIKE "%CONSTRAINT [fk_procurement_batches_items]%" OR sql LIKE "%CONSTRAINT 	fk_procurement_batches_items	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.009ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "procurement_batch_items" AND name = "idx_procurement_batch_items_deleted_at"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.009ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type='table' AND name="reagent_dispense_requests"
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.040ms] [rows:2] SELECT sql FROM sqlite_master WHERE type IN ("table","index") AND tbl_name = "reagent_dispense_requests" AND sql IS NOT NULL order by type = "table" desc
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.016ms] [rows:-] SELECT * FROM `reagent_dispense_requests` LIMIT 1
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.015ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "reagent_dispense_requests" AND (sql LIKE "%CONSTRAINT ""fk_reagent_dispense_requests_requester"" %" OR sql LIKE "%CONSTRAINT fk_reagent_dispense_requests_requester %" OR sql LIKE "%CONSTRAINT `fk_reagent_dispense_requests_requester`%" OR sql LIKE "%CONSTRAINT [fk_reagent_dispense_requests_requester]%" OR sql LIKE "%CONSTRAINT 	fk_reagent_dispense_requests_requester	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.015ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "reagent_dispense_requests" AND (sql LIKE "%CONSTRAINT ""fk_reagent_dispense_requests_reagent_item"" %" OR sql LIKE "%CONSTRAINT fk_reagent_dispense_requests_reagent_item %" OR sql LIKE "%CONSTRAINT `fk_reagent_dispense_requests_reagent_item`%" OR sql LIKE "%CONSTRAINT [fk_reagent_dispense_requests_reagent_item]%" OR sql LIKE "%CONSTRAINT 	fk_reagent_dispense_requests_reagent_item	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.013ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "reagent_dispense_requests" AND (sql LIKE "%CONSTRAINT ""fk_reagent_dispense_requests_leader"" %" OR sql LIKE "%CONSTRAINT fk_reagent_dispense_requests_leader %" OR sql LIKE "%CONSTRAINT `fk_reagent_dispense_requests_leader`%" OR sql LIKE "%CONSTRAINT [fk_reagent_dispense_requests_leader]%" OR sql LIKE "%CONSTRAINT 	fk_reagent_dispense_requests_leader	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.016ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "reagent_dispense_requests" AND (sql LIKE "%CONSTRAINT ""fk_reagent_dispense_requests_key_holder_a"" %" OR sql LIKE "%CONSTRAINT fk_reagent_dispense_requests_key_holder_a %" OR sql LIKE "%CONSTRAINT `fk_reagent_dispense_requests_key_holder_a`%" OR sql LIKE "%CONSTRAINT [fk_reagent_dispense_requests_key_holder_a]%" OR sql LIKE "%CONSTRAINT 	fk_reagent_dispense_requests_key_holder_a	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.017ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "table" AND tbl_name = "reagent_dispense_requests" AND (sql LIKE "%CONSTRAINT ""fk_reagent_dispense_requests_key_holder_b"" %" OR sql LIKE "%CONSTRAINT fk_reagent_dispense_requests_key_holder_b %" OR sql LIKE "%CONSTRAINT `fk_reagent_dispense_requests_key_holder_b`%" OR sql LIKE "%CONSTRAINT [fk_reagent_dispense_requests_key_holder_b]%" OR sql LIKE "%CONSTRAINT 	fk_reagent_dispense_requests_key_holder_b	%")
+
+2026/02/26 09:28:13 /Users/tian/Codes/lab-system-demo-go/backend/cmd/server/main.go:24
+[0.009ms] [rows:-] SELECT count(*) FROM sqlite_master WHERE type = "index" AND tbl_name = "reagent_dispense_requests" AND name = "idx_reagent_dispense_requests_deleted_at"
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /api/ping                 --> main.main.func2 (4 handlers)
+[GIN-debug] GET    /api/instruments          --> lab-system-backend/internal/handlers.GetInstruments (4 handlers)
+[GIN-debug] GET    /api/instruments/:id      --> lab-system-backend/internal/handlers.GetInstrument (4 handlers)
+[GIN-debug] GET    /api/instruments/:id/authorized_users --> lab-system-backend/internal/handlers.GetAuthorizedUsers (4 handlers)
+[GIN-debug] PUT    /api/instruments/:id/admin --> lab-system-backend/internal/handlers.UpdateInstrumentAdmin (4 handlers)
+[GIN-debug] POST   /api/instruments          --> lab-system-backend/internal/handlers.CreateInstrument (4 handlers)
+[GIN-debug] PUT    /api/instruments/:id/status --> lab-system-backend/internal/handlers.UpdateInstrumentStatus (4 handlers)
+[GIN-debug] POST   /api/debug/seed           --> lab-system-backend/internal/handlers.SeedInstruments (4 handlers)
+[GIN-debug] POST   /api/debug/seed_reagents  --> lab-system-backend/internal/handlers.SeedReagents (4 handlers)
+[GIN-debug] POST   /api/debug/seed_team_inventory --> lab-system-backend/internal/handlers.SeedTeamInventory (4 handlers)
+[GIN-debug] POST   /api/debug/fix_dates      --> lab-system-backend/internal/handlers.FixInstrumentDates (4 handlers)
+[GIN-debug] GET    /api/reservations         --> lab-system-backend/internal/handlers.GetReservations (4 handlers)
+[GIN-debug] POST   /api/reservations         --> lab-system-backend/internal/handlers.CreateReservation (4 handlers)
+[GIN-debug] DELETE /api/reservations/:id     --> lab-system-backend/internal/handlers.CancelReservation (4 handlers)
+[GIN-debug] GET    /api/departments          --> lab-system-backend/internal/handlers.GetDepartments (4 handlers)
+[GIN-debug] GET    /api/users                --> lab-system-backend/internal/handlers.GetUsers (4 handlers)
+[GIN-debug] POST   /api/users                --> lab-system-backend/internal/handlers.CreateUser (4 handlers)
+[GIN-debug] PUT    /api/users/:id            --> lab-system-backend/internal/handlers.UpdateUser (4 handlers)
+[GIN-debug] DELETE /api/users/:id            --> lab-system-backend/internal/handlers.DeleteUser (4 handlers)
+[GIN-debug] GET    /api/users/:id/permissions --> lab-system-backend/internal/handlers.GetUserPermissions (4 handlers)
+[GIN-debug] POST   /api/users/:id/permissions --> lab-system-backend/internal/handlers.UpdateUserPermission (4 handlers)
+[GIN-debug] GET    /api/suppliers            --> lab-system-backend/internal/handlers.GetSuppliers (4 handlers)
+[GIN-debug] POST   /api/suppliers            --> lab-system-backend/internal/handlers.CreateSupplier (4 handlers)
+[GIN-debug] PUT    /api/suppliers/:id        --> lab-system-backend/internal/handlers.UpdateSupplier (4 handlers)
+[GIN-debug] DELETE /api/suppliers/:id        --> lab-system-backend/internal/handlers.DeleteSupplier (4 handlers)
+[GIN-debug] GET    /api/reagents/stats       --> lab-system-backend/internal/handlers.GetReagentDashboardStats (4 handlers)
+[GIN-debug] GET    /api/reagents/catalogs    --> lab-system-backend/internal/handlers.GetReagentCatalogs (4 handlers)
+[GIN-debug] POST   /api/reagents/catalogs    --> lab-system-backend/internal/handlers.CreateReagentCatalog (4 handlers)
+[GIN-debug] PUT    /api/reagents/catalogs/:id --> lab-system-backend/internal/handlers.UpdateReagentCatalog (4 handlers)
+[GIN-debug] DELETE /api/reagents/catalogs/:id --> lab-system-backend/internal/handlers.DeleteReagentCatalog (4 handlers)
+[GIN-debug] GET    /api/reagents/stock-check --> lab-system-backend/internal/handlers.StockCheck (4 handlers)
+[GIN-debug] GET    /api/reagents/requests    --> lab-system-backend/internal/handlers.GetReagentRequests (4 handlers)
+[GIN-debug] POST   /api/reagents/requests    --> lab-system-backend/internal/handlers.CreateReagentRequest (4 handlers)
+[GIN-debug] POST   /api/reagents/requests/:id/approve --> lab-system-backend/internal/handlers.ApproveReagentRequest (4 handlers)
+[GIN-debug] POST   /api/reagents/requests/:id/leader-approve --> lab-system-backend/internal/handlers.LeaderApproveReagentRequest (4 handlers)
+[GIN-debug] GET    /api/reagents/items       --> lab-system-backend/internal/handlers.GetReagentItems (4 handlers)
+[GIN-debug] GET    /api/reagents/items/:uuid --> lab-system-backend/internal/handlers.GetReagentItemByUUID (4 handlers)
+[GIN-debug] PUT    /api/reagents/items/:uuid/status --> lab-system-backend/internal/handlers.UpdateReagentItemStatus (4 handlers)
+[GIN-debug] PUT    /api/reagents/items/:uuid/consume --> lab-system-backend/internal/handlers.ConsumeReagentItem (4 handlers)
+[GIN-debug] GET    /api/reagents/team-inventory --> lab-system-backend/internal/handlers.GetTeamInventory (4 handlers)
+[GIN-debug] GET    /api/reagents/cabinets    --> lab-system-backend/internal/handlers.GetReagentCabinets (4 handlers)
+[GIN-debug] POST   /api/reagents/cabinets    --> lab-system-backend/internal/handlers.CreateReagentCabinet (4 handlers)
+[GIN-debug] PUT    /api/reagents/cabinets/:id --> lab-system-backend/internal/handlers.UpdateReagentCabinet (4 handlers)
+[GIN-debug] DELETE /api/reagents/cabinets/:id --> lab-system-backend/internal/handlers.DeleteReagentCabinet (4 handlers)
+[GIN-debug] POST   /api/debug/seed_cabinets  --> lab-system-backend/internal/handlers.SeedCabinets (4 handlers)
+[GIN-debug] POST   /api/reagents/ai/parse    --> lab-system-backend/internal/handlers.ParseReagentRequestAI (4 handlers)
+[GIN-debug] GET    /api/reagents/procurement-batches --> lab-system-backend/internal/handlers.GetProcurementBatches (4 handlers)
+[GIN-debug] POST   /api/reagents/procurement-batches --> lab-system-backend/internal/handlers.CreateProcurementBatch (4 handlers)
+[GIN-debug] GET    /api/reagents/procurement-batches/:id/items --> lab-system-backend/internal/handlers.GetProcurementBatchItems (4 handlers)
+[GIN-debug] PUT    /api/reagents/procurement-batches/:id/items/:item_id --> lab-system-backend/internal/handlers.UpdateProcurementBatchItem (4 handlers)
+[GIN-debug] POST   /api/reagents/procurement-batches/:id/confirm --> lab-system-backend/internal/handlers.ConfirmProcurementBatch (4 handlers)
+[GIN-debug] GET    /api/reagents/dispense-requests --> lab-system-backend/internal/handlers.GetDispenseRequests (4 handlers)
+[GIN-debug] POST   /api/reagents/dispense-requests --> lab-system-backend/internal/handlers.CreateDispenseRequest (4 handlers)
+[GIN-debug] POST   /api/reagents/dispense-requests/:id/leader-approve --> lab-system-backend/internal/handlers.LeaderApproveDispense (4 handlers)
+[GIN-debug] POST   /api/reagents/dispense-requests/:id/key-holder-confirm --> lab-system-backend/internal/handlers.KeyHolderConfirmDispense (4 handlers)
+[GIN-debug] [WARNING] You trusted all proxies, this is NOT safe. We recommend you to set a value.
+Please check https://github.com/gin-gonic/gin/blob/master/docs/doc.md#dont-trust-all-proxies for details.
+[GIN-debug] Listening and serving HTTP on :8080
