@@ -15154,3 +15154,17 @@ Please check https://github.com/gin-gonic/gin/blob/master/docs/doc.md#dont-trust
 	
 [GIN] 2026/02/26 - 10:12:49 | 200 |   36.435958ms |             ::1 | GET      "/api/reagents/stats"
 [GIN] 2026/02/26 - 10:12:49 | 200 |   36.359416ms |             ::1 | GET      "/api/reagents/requests"
+
+2026/02/26 10:20:54 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:984
+[165.072ms] [rows:0] SELECT * FROM `reagent_dispense_requests` WHERE requester_id = "" AND `reagent_dispense_requests`.`deleted_at` IS NULL ORDER BY created_at DESC
+
+2026/02/26 10:20:54 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
+[0.625ms] [rows:14] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` IN (22,23,26,24,25,27,28,31,30,32,33,29,34,35) AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:20:54 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
+[4.132ms] [rows:5] SELECT * FROM `users` WHERE `users`.`id` IN (21,26,30,34,1) AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:20:54 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
+[224.568ms] [rows:23] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`deleted_at` IS NULL
+[GIN] 2026/02/26 - 10:20:54 | 200 |  272.936375ms |             ::1 | GET      "/api/reagents/dispense-requests?role=researcher"
+[GIN] 2026/02/26 - 10:20:54 | 200 |  285.568292ms |             ::1 | GET      "/api/reagents/requests"

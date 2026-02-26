@@ -928,18 +928,83 @@ func ConfirmProcurementBatch(c *gin.Context) {
 			continue // 跳过未匹配的行
 		}
 
-		var reqID uint
-		now := time.Now()
-		if item.MatchedRequestID != nil {
-			reqID = *item.MatchedRequestID
-			// 闭环原始申购单
-			database.DB.Model(&models.ReagentRequest{}).Where("id = ?", reqID).Updates(map[string]interface{}{
-				"status":          "已入库",
-				"closed_at":       now,
-				"order_reference": batch.OrderNumber,
-			})
-		} else if item.MatchedUserID != nil {
-			// 直接指派给某人时，创建代填的紧急申购单闭环
+		// 移除强制建瓶逻辑，此时只完成批次下单的标记
+		createdItems += item.Quantity
+	}
+
+	batch.Status = "已确认"
+	database.DB.Save(&batch)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "Batch confirmed, pending receiving",
+		"items_created": createdItems,
+	})
+}
+
+// ==========================================
+// BPM-B Phase 3: 到货清点与赋码 (三段式解耦设计)
+// ==========================================
+
+// GetPendingReceives 获取所有已确认下单，但还未完全点货物理签收的批次明细
+func GetPendingReceives(c *gin.Context) {
+	var items []models.ProcurementBatchItem
+	// 查找归属于"已确认"大状态批次中的明细，且明细本身的收货状态不是"已收货"，且必须关联了 catalog
+	if err := database.DB.
+		Joins("JOIN procurement_batches pb ON pb.id = procurement_batch_items.batch_id").
+		Preload("Batch").
+		Where("pb.status = ? AND procurement_batch_items.receive_status != ? AND procurement_batch_items.matched_catalog_id IS NOT NULL", "已确认", "已收货").
+		Order("procurement_batch_items.created_at ASC").
+		Find(&items).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, items)
+}
+
+// ReceiveBatchItem 采购人员在“收货工作台”对着单一点货，触发物理资产生成与原始单据闭环
+func ReceiveBatchItem(c *gin.Context) {
+	itemID := c.Param("itemId")
+	var input struct {
+		Quantity int `json:"quantity"` // 实收点验瓶数
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload"})
+		return
+	}
+
+	var item models.ProcurementBatchItem
+	if err := database.DB.Preload("Batch").First(&item, itemID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Batch item not found"})
+		return
+	}
+
+	if item.MatchedCatalogID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Item has not been matched to a catalog"})
+		return
+	}
+
+	if item.ReceiveStatus == "已收货" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Item is already fully received"})
+		return
+	}
+
+	remaining := item.Quantity - item.ReceivedQuantity
+	if input.Quantity > remaining || input.Quantity <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid receive quantity"})
+		return
+	}
+
+	var reqID uint
+	now := time.Now()
+
+	if item.MatchedRequestID != nil {
+		reqID = *item.MatchedRequestID
+	} else if item.MatchedUserID != nil {
+		var existingReq models.ReagentRequest
+		if err := database.DB.Where("order_reference = ? AND requestor_id = ? AND reagent_catalog_id = ? AND remarks = ?",
+			item.Batch.OrderNumber, *item.MatchedUserID, *item.MatchedCatalogID, "采购批次直指补录").First(&existingReq).Error; err != nil {
+
 			req := models.ReagentRequest{
 				RequestorID:      *item.MatchedUserID,
 				ReagentCatalogID: *item.MatchedCatalogID,
@@ -947,41 +1012,50 @@ func ConfirmProcurementBatch(c *gin.Context) {
 				Status:           "已入库",
 				RequestType:      "紧急",
 				Remarks:          "采购批次直指补录",
-				OrderReference:   batch.OrderNumber,
+				OrderReference:   item.Batch.OrderNumber,
 				ClosedAt:         &now,
 			}
 			database.DB.Create(&req)
 			reqID = req.ID
-		}
-
-		// 为每瓶生成 ReagentItem
-		for q := 0; q < item.Quantity; q++ {
-			reagentItem := models.ReagentItem{
-				ReagentCatalogID: *item.MatchedCatalogID,
-				Status:           "在库",
-				Location:         "分拣区(临时区)",
-			}
-			if reqID > 0 {
-				reagentItem.ReagentRequestID = reqID
-			}
-			database.DB.Create(&reagentItem)
-			createdItems++
-		}
-
-		// 如果有关联的申购单，更新其状态为已到货
-		if item.MatchedRequestID != nil {
-			database.DB.Model(&models.ReagentRequest{}).
-				Where("id = ? AND status = ?", *item.MatchedRequestID, "采购中").
-				Update("status", "已到货")
+		} else {
+			reqID = existingReq.ID
 		}
 	}
 
-	batch.Status = "已确认"
-	database.DB.Save(&batch)
+	createdItemsCount := 0
+	for q := 0; q < input.Quantity; q++ {
+		reagentItem := models.ReagentItem{
+			ReagentCatalogID: *item.MatchedCatalogID,
+			Status:           "已到货", // 呆在分拣暂存区
+			Location:         "分拣区(临时区)",
+		}
+		if reqID > 0 {
+			reagentItem.ReagentRequestID = reqID
+		}
+		database.DB.Create(&reagentItem)
+		createdItemsCount++
+	}
+
+	item.ReceivedQuantity += input.Quantity
+	if item.ReceivedQuantity >= item.Quantity {
+		item.ReceiveStatus = "已收货"
+		if reqID > 0 {
+			database.DB.Model(&models.ReagentRequest{}).Where("id = ?", reqID).Updates(map[string]interface{}{
+				"status":          "已入库",
+				"closed_at":       now,
+				"order_reference": item.Batch.OrderNumber,
+			})
+		}
+	} else {
+		item.ReceiveStatus = "部分收货"
+	}
+
+	database.DB.Save(&item)
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":       "Batch confirmed, items created",
-		"items_created": createdItems,
+		"message":            "Items received and marked for staging",
+		"created_items":      createdItemsCount,
+		"new_receive_status": item.ReceiveStatus,
 	})
 }
 

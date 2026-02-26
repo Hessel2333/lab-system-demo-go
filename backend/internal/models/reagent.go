@@ -139,8 +139,9 @@ type ProcurementBatch struct {
 
 // ProcurementBatchItem 批次明细行（每行对应 Excel 中的一条采购记录）
 type ProcurementBatchItem struct {
-	ID      uint `gorm:"primaryKey" json:"id"`
-	BatchID uint `json:"batch_id"`
+	ID      uint             `gorm:"primaryKey" json:"id"`
+	BatchID uint             `json:"batch_id"`
+	Batch   ProcurementBatch `gorm:"foreignKey:BatchID" json:"batch"`
 
 	// 原始 Excel 数据
 	ReagentName      string  `json:"reagent_name"` // Excel 中的商品名称
@@ -153,10 +154,12 @@ type ProcurementBatchItem struct {
 	ProductCategory  string  `json:"product_category"`  // 商品类别
 
 	// 匹配结果
-	MatchedCatalogID *uint  `json:"matched_catalog_id"` // 匹配到的品目 ID
-	MatchedRequestID *uint  `json:"matched_request_id"` // 匹配到的申购单 ID
-	MatchedUserID    *uint  `json:"matched_user_id"`    // 匹配到的直接使用人 ID (无申购单直接发库用)
-	MatchStatus      string `json:"match_status"`       // 自动匹配 / 手动匹配 / 未匹配
+	MatchedCatalogID *uint  `json:"matched_catalog_id"`                  // 匹配到的品目 ID
+	MatchedRequestID *uint  `json:"matched_request_id"`                  // 匹配到的申购单 ID
+	MatchedUserID    *uint  `json:"matched_user_id"`                     // 匹配到的直接使用人 ID (无申购单直接发库用)
+	MatchStatus      string `json:"match_status"`                        // 自动匹配 / 手动匹配 / 未匹配
+	ReceiveStatus    string `json:"receive_status" gorm:"default:'待收货'"` // 待收货 / 部分收货 / 已收货
+	ReceivedQuantity int    `json:"received_quantity" gorm:"default:0"`
 
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
