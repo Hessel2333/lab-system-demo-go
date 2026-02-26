@@ -2,13 +2,14 @@
 import { ref, onMounted, watch, computed } from 'vue'
 import axios from 'axios'
 import Card from '@/components/ui/Card.vue'
-import { LayoutDashboard, ShoppingCart, List, ScanLine, Layers, BookOpen } from 'lucide-vue-next'
+import { LayoutDashboard, ShoppingCart, List, ScanLine, Layers, BookOpen, FileSpreadsheet } from 'lucide-vue-next'
 
 import ReagentScanner from '@/components/reagents/ReagentScanner.vue'
 import ReagentRequestWizard from '@/components/reagents/ReagentRequestWizard.vue'
 import ReagentRequestList from '@/components/reagents/ReagentRequestList.vue'
 import ReagentUnifiedInventory from '@/components/reagents/ReagentUnifiedInventory.vue'
 import ReagentCatalogManager from '@/components/reagents/ReagentCatalogManager.vue'
+import ProcurementBatchImport from '@/components/reagents/ProcurementBatchImport.vue'
 
 // ECharts
 import { use } from 'echarts/core'
@@ -108,6 +109,7 @@ const tabs = computed(() => {
           return [
               { id: 'dashboard', label: '宏观大盘', icon: LayoutDashboard },
               { id: 'history', label: '采购任务池', icon: List },
+              { id: 'batch-import', label: '明细导入', icon: FileSpreadsheet },
               { id: 'unified-inventory', label: '库存台账', icon: Layers },
               { id: 'catalog', label: '品目管理', icon: BookOpen },
           ]
@@ -356,6 +358,11 @@ const trendOption = computed(() => {
             </div>
         </div>
         <ReagentCatalogManager />
+    </div>
+
+    <!-- Content: BPM-B Batch Import -->
+    <div v-if="activeTab === 'batch-import'" class="space-y-4">
+        <ProcurementBatchImport />
     </div>
 
     <!-- Content: Scanner -->

@@ -78,13 +78,34 @@ const toast = (msg: string, type: 'success' | 'error' = 'success') => {
     setTimeout(() => { showToast.value = false }, 3000)
 }
 
-const approveRequest = async (id: number) => {
+// --- BPM-A: 采购审批弹窗状态 ---
+const orderDialogOpen = ref(false)
+const orderDialogReqId = ref<number | null>(null)
+const orderDialogReqName = ref('')
+const orderReference = ref('')
+const orderSubmitting = ref(false)
+
+const openOrderDialog = (req: any) => {
+    orderDialogReqId.value = req.id
+    orderDialogReqName.value = req.reagent_catalog?.name || '未知试剂'
+    orderReference.value = ''
+    orderDialogOpen.value = true
+}
+
+const confirmApproveAndOrder = async () => {
+    if (!orderDialogReqId.value) return
+    orderSubmitting.value = true
     try {
-        await axios.post(`/api/reagents/requests/${id}/approve`)
-        toast("审批通过！系统已记录采购动作。")
+        await axios.post(`/api/reagents/requests/${orderDialogReqId.value}/approve`, {
+            order_reference: orderReference.value
+        })
+        toast('审批通过！系统已记录采购动作。')
+        orderDialogOpen.value = false
         fetchRequests()
     } catch (error) {
-        toast("审批失败，请重试。", 'error')
+        toast('审批失败，请重试。', 'error')
+    } finally {
+        orderSubmitting.value = false
     }
 }
 
@@ -261,7 +282,7 @@ const getStatusColor = (status: string) => {
                           v-if="req.status === '待处理' && role === 'procurement'"
                           size="sm"
                           class="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-                          @click="approveRequest(req.id)"
+                          @click="openOrderDialog(req)"
                         >
                             审批并下单采购
                         </Button>
@@ -359,6 +380,57 @@ const getStatusColor = (status: string) => {
         @close="isProgressOpen = false"
         @refresh="fetchRequests"
     />
+
+    <!-- BPM-A: 审批下单确认弹窗 -->
+    <Transition
+      enter-active-class="transition ease-out duration-200"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition ease-in duration-150"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div v-if="orderDialogOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+          <!-- Header -->
+          <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
+            <h3 class="text-white font-semibold text-base">审批并下单采购</h3>
+            <p class="text-blue-100 text-xs mt-0.5">{{ orderDialogReqName }}</p>
+          </div>
+          <!-- Body -->
+          <div class="px-6 py-5 space-y-4">
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1.5">外部平台订单号 <span class="text-gray-400">(选填)</span></label>
+              <input
+                v-model="orderReference"
+                type="text"
+                placeholder="如：易派客订单号 EP20260201..."
+                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+              />
+              <p class="text-[10px] text-gray-400 mt-1">可在外部平台下单后回填，也可以稍后补录</p>
+            </div>
+            <div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              <p class="text-xs text-amber-800">⚡ 确认后，此申购单状态将变更为「采购中」，BPM-A 闭环。</p>
+            </div>
+          </div>
+          <!-- Footer -->
+          <div class="px-6 py-3 bg-gray-50 flex justify-end gap-2 border-t">
+            <Button size="sm" class="bg-gray-200 hover:bg-gray-300 text-gray-700" @click="orderDialogOpen = false">
+              取消
+            </Button>
+            <Button
+              size="sm"
+              class="bg-blue-600 hover:bg-blue-700 text-white"
+              :disabled="orderSubmitting"
+              @click="confirmApproveAndOrder"
+            >
+              <Loader2 v-if="orderSubmitting" class="w-3.5 h-3.5 animate-spin mr-1" />
+              确认审批并下单
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- Toast -->
     <Transition
