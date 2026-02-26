@@ -267,10 +267,13 @@ const getStatusColor = (status: string) => {
                             等待团队长审批
                         </span>
                         <span v-else-if="req.status === '待采购'" class="text-xs text-blue-500">
-                            等待统一下单
+                            待采购员统一汇总下单
                         </span>
-                        <span v-else-if="req.status === '已接单'" class="text-xs text-green-600">
-                            BPM-A 已闭环
+                        <span v-else-if="req.status === '已接单'" class="text-xs text-indigo-600 font-medium">
+                            📦 已纳入采购周期，等待到货
+                        </span>
+                        <span v-else-if="req.status === '已入库'" class="text-xs text-green-600 font-medium">
+                            ✅ 已到货入库
                         </span>
                         <span v-else-if="req.status === '已驳回'" class="text-xs text-red-600">
                             已驳回

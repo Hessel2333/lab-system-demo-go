@@ -928,18 +928,9 @@ func ConfirmProcurementBatch(c *gin.Context) {
 			continue // 跳过未匹配的行
 		}
 
-		// 移除强制建瓶逻辑，此时只完成批次下单的标记
+		// BPM-A/B 完全解耦：只累计数量，不修改申购单状态
+		// 采购批次只记录关联关系，申购单的状态由 BPM-A 自己单独推进
 		createdItems += item.Quantity
-
-		// 既然已发出采购订单，正式将匹配上的申购需求标为 "已接单"
-		if item.MatchedRequestID != nil {
-			database.DB.Model(&models.ReagentRequest{}).
-				Where("id = ? AND status = ?", *item.MatchedRequestID, "待采购").
-				Updates(map[string]interface{}{
-					"status":          "已接单",
-					"order_reference": batch.OrderNumber,
-				})
-		}
 	}
 
 	batch.Status = "已确认"
@@ -1005,31 +996,11 @@ func ReceiveBatchItem(c *gin.Context) {
 		return
 	}
 
+	// BPM-A/B 完全解耦：不再创建中间申购单，也不修改原始申购单状态
+	// 仅做软关联：如果有匹配的申购单，就把 ReagentRequestID 写入到瓶资产上，方便复盘查询
 	var reqID uint
-	now := time.Now()
-
 	if item.MatchedRequestID != nil {
 		reqID = *item.MatchedRequestID
-	} else if item.MatchedUserID != nil {
-		var existingReq models.ReagentRequest
-		if err := database.DB.Where("order_reference = ? AND requestor_id = ? AND reagent_catalog_id = ? AND remarks = ?",
-			item.Batch.OrderNumber, *item.MatchedUserID, *item.MatchedCatalogID, "采购批次直指补录").First(&existingReq).Error; err != nil {
-
-			req := models.ReagentRequest{
-				RequestorID:      *item.MatchedUserID,
-				ReagentCatalogID: *item.MatchedCatalogID,
-				Quantity:         item.Quantity,
-				Status:           "已入库",
-				RequestType:      "紧急",
-				Remarks:          "采购批次直指补录",
-				OrderReference:   item.Batch.OrderNumber,
-				ClosedAt:         &now,
-			}
-			database.DB.Create(&req)
-			reqID = req.ID
-		} else {
-			reqID = existingReq.ID
-		}
 	}
 
 	createdItemsCount := 0
@@ -1049,13 +1020,7 @@ func ReceiveBatchItem(c *gin.Context) {
 	item.ReceivedQuantity += input.Quantity
 	if item.ReceivedQuantity >= item.Quantity {
 		item.ReceiveStatus = "已收货"
-		if reqID > 0 {
-			database.DB.Model(&models.ReagentRequest{}).Where("id = ?", reqID).Updates(map[string]interface{}{
-				"status":          "已入库",
-				"closed_at":       now,
-				"order_reference": item.Batch.OrderNumber,
-			})
-		}
+		// BPM-A/B 解耦：不再修改申购单状态，申购单由 BPM-A 自行流转
 	} else {
 		item.ReceiveStatus = "部分收货"
 	}

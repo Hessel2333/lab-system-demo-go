@@ -61,24 +61,30 @@ const getStepStatus = (stepName: string) => {
     if (!props.request) return 'pending'
     const status = props.request.status
     
+    // BPM-A 纯净状态机：展示申购单自身的流转，与 BPM-B 完全解耦
     if (stepName === 'submitted') return 'completed'
     
     if (stepName === 'approved') {
+        // 待审批/待采购 → 这一步正在进行中
         if (status === '待审批' || status === '待采购') return 'current'
+        // 已接单及后续状态 → 这一步已完成
         if (['已接单', '已入库', '已驳回'].includes(status)) return 'completed'
         return 'pending'
     }
     
     if (stepName === 'arrived') {
+        // 已接单 → 已下单等待到货，此步进行中
         if (status === '已接单') return 'current'
+        // 已入库 → 已到货且已处理
         if (status === '已入库') return 'completed'
         return 'pending'
     }
     
     if (stepName === 'instorage') {
         if (status !== '已入库') return 'pending'
-        if (items.value.length === 0) return 'current'
-        const allStored = items.value.every(i => i.status === '在库' || i.status === '已耗尽')
+        // 已入库且有试剂实体绑定 → 確认完成
+        const allStored = items.value.length > 0 && 
+            items.value.every(i => i.status === '在库' || i.status === '已耗尽')
         return allStored ? 'completed' : 'current'
     }
     
@@ -214,12 +220,12 @@ const formatDateTime = (dateStr: string | null) => {
                   </div>
                   <div class="flex-1 p-4 rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow" :class="getStepStatus('arrived') === 'pending' ? 'opacity-60 grayscale-[0.5]' : ''">
                       <div class="flex items-center justify-between space-x-2 mb-1">
-                          <div class="font-bold text-gray-900 text-sm">物流运输与实物到点</div>
+                          <div class="font-bold text-gray-900 text-sm">采购单已接受，等待将货到实验室</div>
                           <span class="text-xs font-medium px-2 py-0.5 rounded" :class="getStepStatus('arrived') === 'completed' ? 'text-green-500 bg-green-50' : (getStepStatus('arrived') === 'current' ? 'text-blue-500 bg-blue-50' : 'text-gray-400 bg-gray-50')">
-                            {{ getTimelineLabel(getStepStatus('arrived'), '等待发运收单') }}
+                            {{ getTimelineLabel(getStepStatus('arrived'), '等待采购') }}
                           </span>
                       </div>
-                      <div class="text-xs text-gray-500 leading-relaxed">供应商发货，通过【到货点验台】分拣入库并生成瓶控条码。</div>
+                      <div class="text-xs text-gray-500 leading-relaxed">采购已向供应商下单，试剂将由采购员安排到货并通知到实验室领用。</div>
                       <div v-if="getStepStatus('arrived') !== 'pending'" class="text-[10px] text-gray-400 mt-2 flex items-center gap-2">
                           <span v-if="getStepTime('arrived')" class="flex items-center gap-1"><Clock class="w-3 h-3" /> {{ formatDateTime(getStepTime('arrived')) }}</span>
                           <span v-if="getStepOperator('arrived')" class="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded font-medium">📦 {{ getStepOperator('arrived') }}</span>
