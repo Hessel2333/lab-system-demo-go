@@ -59,14 +59,10 @@ const onFileSelect = (e: Event) => {
 }
 
 const processFile = async (file: File) => {
-    if (!period.value) {
-        toast('请先选择所属周期', 'error')
-        return
-    }
-
     isUploading.value = true
     try {
         let items: any[] = []
+        let autoPeriod = ''
 
         if (file.size > 0) {
             //真实解析 Excel
@@ -91,6 +87,13 @@ const processFile = async (file: File) => {
                 const name = row[23]
                 if (!name || name === '商品名称') continue // 跳过空行或表头本身
                 
+                // 自动尝试提取周期 (从“下单时间”第 11 列)
+                if (!autoPeriod && row[10]) {
+                    const dateStr = String(row[10]).trim()
+                    const match = dateStr.match(/^(\d{4}-\d{2})/)
+                    if (match && match[1]) autoPeriod = match[1]
+                }
+                
                 items.push({
                     reagent_name: name.toString().trim(),
                     cas_number: '', // 易派客导出通常没有分离的 CAS 号
@@ -101,6 +104,14 @@ const processFile = async (file: File) => {
 
             if (items.length === 0) {
                 toast('未能在 Excel 中解析到有效试剂明细数据', 'error')
+                isUploading.value = false
+                return
+            }
+            
+            if (autoPeriod) {
+                period.value = autoPeriod
+            } else if (!period.value) {
+                toast('无法从 Excel 自动识别周期，请手动选择后再上传', 'error')
                 isUploading.value = false
                 return
             }
@@ -206,6 +217,10 @@ const resetAll = () => {
 const currentPeriod = new Date().toISOString().slice(0, 7) // e.g. "2026-02"
 
 const createEmptyBatch = () => {
+    if (!period.value) {
+        toast('创建空批次必须手动指定所属周期', 'error')
+        return
+    }
     processFile(new File([], 'manual'))
 }
 </script>
@@ -235,7 +250,6 @@ const createEmptyBatch = () => {
 
       <!-- Step 1: 上传 -->
       <div v-if="step === 'upload'" class="space-y-4">
-        <!-- 周期选择 -->
         <div class="flex items-center gap-3">
           <label class="text-sm font-medium text-gray-700">所属周期</label>
           <input
@@ -244,6 +258,7 @@ const createEmptyBatch = () => {
             :max="currentPeriod"
             class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
           />
+          <span class="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md border border-blue-100">✨ 上传 Excel 会自动提取</span>
         </div>
 
         <!-- 拖拽上传区 -->
@@ -269,7 +284,6 @@ const createEmptyBatch = () => {
         <!-- 或者手动创建批次 -->
         <div class="text-center">
           <button
-            v-if="period"
             @click="createEmptyBatch"
             class="text-xs text-blue-600 hover:text-blue-700 underline"
           >
