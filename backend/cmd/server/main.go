@@ -134,6 +134,10 @@ func main() {
 		api.PUT("/reagents/procurement-batches/:id/items/:item_id", handlers.UpdateProcurementBatchItem)
 		api.POST("/reagents/procurement-batches/:id/confirm", handlers.ConfirmProcurementBatch)
 
+		// BPM-B Phase 3: 到货清点与赋码
+		api.GET("/reagents/pending-receives", handlers.GetPendingReceives)
+		api.POST("/reagents/pending-receives/:itemId/receive", handlers.ReceiveBatchItem)
+
 		// 领用审批与双人双锁
 		api.GET("/reagents/dispense-requests", handlers.GetDispenseRequests)
 		api.POST("/reagents/dispense-requests", handlers.CreateDispenseRequest)
