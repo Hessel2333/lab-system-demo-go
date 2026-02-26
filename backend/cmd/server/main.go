@@ -32,6 +32,9 @@ func main() {
 		&models.ReagentRequest{},
 		&models.ReagentItem{},
 		&models.ReagentLog{},
+		&models.ProcurementBatch{},
+		&models.ProcurementBatchItem{},
+		&models.ReagentDispenseRequest{},
 	)
 
 	// 3. Init Router
@@ -123,6 +126,19 @@ func main() {
 		api.POST("/debug/seed_cabinets", handlers.SeedCabinets)
 
 		api.POST("/reagents/ai/parse", handlers.ParseReagentRequestAI)
+
+		// BPM-B: 采购批次导入
+		api.GET("/reagents/procurement-batches", handlers.GetProcurementBatches)
+		api.POST("/reagents/procurement-batches", handlers.CreateProcurementBatch)
+		api.GET("/reagents/procurement-batches/:id/items", handlers.GetProcurementBatchItems)
+		api.PUT("/reagents/procurement-batches/:id/items/:item_id", handlers.UpdateProcurementBatchItem)
+		api.POST("/reagents/procurement-batches/:id/confirm", handlers.ConfirmProcurementBatch)
+
+		// 领用审批与双人双锁
+		api.GET("/reagents/dispense-requests", handlers.GetDispenseRequests)
+		api.POST("/reagents/dispense-requests", handlers.CreateDispenseRequest)
+		api.POST("/reagents/dispense-requests/:id/leader-approve", handlers.LeaderApproveDispense)
+		api.POST("/reagents/dispense-requests/:id/key-holder-confirm", handlers.KeyHolderConfirmDispense)
 	}
 
 	// 5. Run

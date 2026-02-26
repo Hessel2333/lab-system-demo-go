@@ -47,6 +47,11 @@ type ReagentRequest struct {
 	ProjectName      string `json:"project_name"`
 	ProjectID        string `json:"project_id"`
 
+	// BPM-A: 采购闭环相关
+	OrderReference  string     `json:"order_reference"`  // 外部平台订单号（如易派客）
+	OrderAttachment string     `json:"order_attachment"` // 下单截图/凭证附件路径
+	ClosedAt        *time.Time `json:"closed_at"`        // BPM-A 闭环时间
+
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
@@ -111,4 +116,80 @@ func (item *ReagentItem) BeforeCreate(tx *gorm.DB) (err error) {
 		item.UUID = uuid.New().String()
 	}
 	return
+}
+
+// --------------- BPM-B: 采购批次导入 ---------------
+
+// ProcurementBatch 采购批次（对应一次 Excel 导入）
+type ProcurementBatch struct {
+	ID         uint   `gorm:"primaryKey" json:"id"`
+	UploaderID uint   `json:"uploader_id"`
+	Uploader   User   `gorm:"foreignKey:UploaderID" json:"uploader"`
+	SourceFile string `json:"source_file"` // 上传的原始文件路径
+	Period     string `json:"period"`      // 所属周期，如 "2026-01"
+	Status     string `json:"status"`      // 解析中 / 待确认 / 已确认
+
+	Items []ProcurementBatchItem `gorm:"foreignKey:BatchID" json:"items"`
+
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+// ProcurementBatchItem 批次明细行（每行对应 Excel 中的一条采购记录）
+type ProcurementBatchItem struct {
+	ID      uint `gorm:"primaryKey" json:"id"`
+	BatchID uint `json:"batch_id"`
+
+	// 原始 Excel 数据
+	ReagentName string  `json:"reagent_name"` // Excel 中的商品名称
+	CASNumber   string  `json:"cas_number"`   // 解析出的 CAS 号
+	Quantity    int     `json:"quantity"`
+	Unit        string  `json:"unit"`
+	UnitPrice   float64 `json:"unit_price"`
+	Supplier    string  `json:"supplier"` // 供应商（来自 Excel）
+
+	// 匹配结果
+	MatchedCatalogID *uint  `json:"matched_catalog_id"` // 匹配到的品目 ID
+	MatchedRequestID *uint  `json:"matched_request_id"` // 匹配到的申购单 ID
+	MatchStatus      string `json:"match_status"`       // 自动匹配 / 手动匹配 / 未匹配
+
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+// --------------- 领用审批与双人双锁 ---------------
+
+// ReagentDispenseRequest 试剂领用申请单
+type ReagentDispenseRequest struct {
+	ID            uint        `gorm:"primaryKey" json:"id"`
+	RequesterID   uint        `json:"requester_id"`
+	Requester     User        `gorm:"foreignKey:RequesterID" json:"requester"`
+	ReagentItemID string      `gorm:"type:char(36)" json:"reagent_item_id"`
+	ReagentItem   ReagentItem `gorm:"foreignKey:ReagentItemID;references:UUID" json:"reagent_item"`
+
+	Amount  float64 `json:"amount"`  // 领取量
+	Purpose string  `json:"purpose"` // 用途 / 关联实验
+	Status  string  `json:"status"`  // 待审批 / 已通过 / 已驳回 / 待双签 / 已完成
+
+	// 团队长审批
+	LeaderID         *uint      `json:"leader_id"`
+	Leader           User       `gorm:"foreignKey:LeaderID" json:"leader"`
+	LeaderApprovedAt *time.Time `json:"leader_approved_at"`
+	LeaderRejectMsg  string     `json:"leader_reject_msg"` // 驳回原因
+
+	// 管控品双人双锁
+	KeyHolderAID          *uint      `json:"key_holder_a_id"`
+	KeyHolderA            User       `gorm:"foreignKey:KeyHolderAID" json:"key_holder_a"`
+	KeyHolderBID          *uint      `json:"key_holder_b_id"`
+	KeyHolderB            User       `gorm:"foreignKey:KeyHolderBID" json:"key_holder_b"`
+	KeyHolderAConfirmedAt *time.Time `json:"key_holder_a_confirmed_at"`
+	KeyHolderBConfirmedAt *time.Time `json:"key_holder_b_confirmed_at"`
+	KeyHolderRejectMsg    string     `json:"key_holder_reject_msg"` // 钥匙持有人驳回原因
+	ExpiresAt             *time.Time `json:"expires_at"`            // 双签超时（如 24h）
+
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
