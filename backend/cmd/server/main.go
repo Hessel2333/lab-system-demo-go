@@ -74,6 +74,7 @@ func main() {
 		api.POST("/debug/seed", handlers.SeedInstruments)                  // Debug endpoint
 		api.POST("/debug/seed_reagents", handlers.SeedReagents)            // Debug endpoint
 		api.POST("/debug/seed_team_inventory", handlers.SeedTeamInventory) // Debug endpoint
+		api.POST("/debug/seed_org", handlers.SeedOrganization)             // Debug endpoint
 		api.POST("/debug/fix_dates", handlers.FixInstrumentDates)          // Temporary fix endpoint
 
 		// Reservations
@@ -115,7 +116,10 @@ func main() {
 		api.GET("/reagents/items", handlers.GetReagentItems)
 		api.GET("/reagents/items/:uuid", handlers.GetReagentItemByUUID)
 		api.PUT("/reagents/items/:uuid/status", handlers.UpdateReagentItemStatus)
+		api.POST("/reagents/items/:uuid/check-in", handlers.CheckInReagentItem)
 		api.PUT("/reagents/items/:uuid/consume", handlers.ConsumeReagentItem)
+		api.POST("/reagents/items/:uuid/deplete", handlers.DepleteReagentItem)
+		api.POST("/reagents/items/print-labels", handlers.PrintReagentLabels)
 		api.GET("/reagents/team-inventory", handlers.GetTeamInventory)
 
 		// Reagent Cabinet CRUD

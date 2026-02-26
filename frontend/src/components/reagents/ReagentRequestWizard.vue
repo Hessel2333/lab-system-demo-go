@@ -266,7 +266,7 @@ const resetForm = () => {
 </script>
 
 <template>
-  <div class="max-w-6xl mx-auto">
+  <div class="w-full">
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
       
       <!-- Left Column: Main Form Area (Current view) -->
@@ -282,7 +282,7 @@ const resetForm = () => {
                     />
                     <div class="absolute bottom-4 right-4">
                         <Button 
-                            class="rounded-full px-6 shadow-md"
+                            class="rounded-xl px-6 h-10 shadow-sm"
                             :disabled="!prompt || isAnalyzing || isSubmitting"
                             @click="analyzeRequest"
                         >
@@ -399,7 +399,7 @@ const resetForm = () => {
                     <!-- Submission Actions -->
                     <div class="flex justify-end gap-4 pt-4">
                         <Button variant="outline" @click="resetForm" class="h-11 px-8 rounded-xl font-medium text-gray-600 hover:bg-gray-50 border-gray-200 transition-all">清空/取消</Button>
-                        <Button @click="submitRequest" :disabled="isSubmitting" class="h-11 px-10 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 rounded-xl font-bold transition-all transform hover:-translate-y-0.5 active:translate-y-0">
+                        <Button @click="submitRequest" variant="primary" :disabled="isSubmitting" class="h-11 px-10 shadow-lg shadow-blue-500/20 rounded-xl font-bold transition-all transform hover:-translate-y-0.5 active:translate-y-0">
                             <Loader2 v-if="isSubmitting" class="mr-2 h-5 w-5 animate-spin" />
                             <CheckCircle v-else class="mr-2 h-5 w-5" />
                             确认提交申购
@@ -517,10 +517,10 @@ const resetForm = () => {
       leave-from-class="translate-y-0 opacity-100"
       leave-to-class="translate-y-4 opacity-0"
     >
-      <div v-if="showToast" class="fixed bottom-6 right-6 z-50 max-w-sm">
+      <div v-if="showToast" class="apple-toast-wrap">
         <div :class="[
-          'px-4 py-3 rounded-lg shadow-lg border text-sm font-medium flex items-center gap-2',
-          toastType === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'
+          'apple-toast',
+          toastType === 'success' ? 'apple-toast-success' : 'apple-toast-error'
         ]">
           <span>{{ toastMessage }}</span>
         </div>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
-import { Loader2, Search, Pencil, Trash2, Plus, X, FlaskConical, Archive } from 'lucide-vue-next'
+import { Loader2, Search, Pencil, Trash2, Plus, X, FlaskConical } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Label from '@/components/ui/Label.vue'
@@ -145,14 +145,14 @@ const onSearchInput = () => {
 <template>
   <div class="space-y-4">
     <!-- 子 Tab 切换 -->
-    <div class="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+    <div class="apple-segmented w-fit">
       <button @click="activeSubTab='catalogs'"
-        :class="['flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all', activeSubTab==='catalogs' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700']">
-        <FlaskConical class="w-3.5 h-3.5" /> 品目数据库
+        :class="['apple-segmented-btn', activeSubTab==='catalogs' ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']">
+        品目台账
       </button>
       <button @click="activeSubTab='cabinets'"
-        :class="['flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all', activeSubTab==='cabinets' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700']">
-        <Archive class="w-3.5 h-3.5" /> 试剂柜管理
+        :class="['apple-segmented-btn', activeSubTab==='cabinets' ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']">
+        试剂柜台账
       </button>
     </div>
 
@@ -170,7 +170,7 @@ const onSearchInput = () => {
                 <option v-for="l in ALL_LABELS" :key="l" :value="l">{{ l }}</option>
             </select>
         </div>
-        <Button @click="openCreate" class="bg-blue-600 hover:bg-blue-700 text-white shadow-sm flex items-center gap-1.5">
+        <Button @click="openCreate" variant="primary" class="h-[38px] px-4 text-sm flex items-center gap-1.5 font-medium whitespace-nowrap">
             <Plus class="w-4 h-4" /> 新增品目
         </Button>
     </div>
@@ -181,7 +181,7 @@ const onSearchInput = () => {
     </div>
 
     <!-- Table -->
-    <div v-else-if="catalogList.length > 0" class="overflow-x-auto rounded-lg border">
+    <div v-else-if="catalogList.length > 0" class="apple-table-wrap">
       <table class="w-full text-sm text-left">
         <thead class="text-xs text-gray-700 uppercase bg-gray-50">
           <tr>
@@ -254,8 +254,8 @@ const onSearchInput = () => {
         leave-from-class="opacity-100"
         leave-to-class="opacity-0"
       >
-      <div v-if="isDialogOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="isDialogOpen = false">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 max-h-[85vh] overflow-y-auto">
+      <div v-if="isDialogOpen" class="apple-modal-backdrop" @click.self="isDialogOpen = false">
+        <div class="apple-modal-panel max-h-[85vh] max-w-2xl">
           <div class="flex items-center justify-between px-6 py-4 border-b">
             <h3 class="text-lg font-bold text-gray-900">{{ isEditing ? '编辑品目' : '新增品目' }}</h3>
             <button @click="isDialogOpen = false" class="p-1 rounded-md hover:bg-gray-100"><X class="w-5 h-5 text-gray-400" /></button>
@@ -335,7 +335,7 @@ const onSearchInput = () => {
           </div>
           <div class="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-2xl">
             <Button variant="outline" @click="isDialogOpen = false" class="px-6">取消</Button>
-            <Button @click="saveForm" :disabled="isSaving" class="px-8 bg-blue-600 hover:bg-blue-700 text-white">
+            <Button @click="saveForm" variant="primary" :disabled="isSaving" class="px-8">
               <Loader2 v-if="isSaving" class="w-4 h-4 animate-spin mr-1" />
               {{ isEditing ? '保存修改' : '创建品目' }}
             </Button>
@@ -354,9 +354,9 @@ const onSearchInput = () => {
       leave-from-class="translate-y-0 opacity-100"
       leave-to-class="translate-y-4 opacity-0"
     >
-      <div v-if="showToast" class="fixed bottom-6 right-6 z-[60] max-w-sm">
-        <div :class="['px-4 py-3 rounded-lg shadow-lg border text-sm font-medium',
-          toastType === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200']">
+      <div v-if="showToast" class="apple-toast-wrap">
+        <div :class="['apple-toast',
+          toastType === 'success' ? 'apple-toast-success' : 'apple-toast-error']">
           {{ toastMessage }}
         </div>
       </div>

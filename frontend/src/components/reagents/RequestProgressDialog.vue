@@ -1,21 +1,23 @@
 <script setup lang="ts">
-import Dialog from '@/components/ui/Dialog.vue'
-import { CheckCircle2, Clock, Truck, Package, PackageCheck, MapPin, Trash2, RefreshCw } from 'lucide-vue-next'
 import { ref, watch, computed } from 'vue'
 import axios from 'axios'
-import Input from '@/components/ui/Input.vue'
+import { CheckCircle2, Clock, XCircle, RefreshCw, FileText, Package, ShoppingCart } from 'lucide-vue-next'
+import Button from '@/components/ui/Button.vue'
+import Badge from '@/components/ui/Badge.vue'
+import Dialog from '@/components/ui/Dialog.vue'
+import ItemLifecycleDialog from '@/components/reagents/ItemLifecycleDialog.vue'
+import { formatAmount, formatNumber } from '@/lib/quantity'
 
 const props = defineProps<{ open: boolean, request: any }>()
 const emit = defineEmits(['close', 'refresh'])
 
+// BPM-B 关联的实体（试剂瓶）
 const items = ref<any[]>([])
 const isLoadingItems = ref(false)
-const batchLocation = ref('')
-const quickLocations = ['E309', 'E307', 'F103', 'F309', 'B201']
 
 const arrivedItems = computed(() => items.value.filter(i => i.status === '已到货'))
 const storedItems = computed(() => items.value.filter(i => i.status === '在库'))
-const consumedItems = computed(() => items.value.filter(i => i.status === '已耗尽'))
+// consumedItems 不再被显式引用，故不再定义以消除 ts 警告
 
 const showToast = ref(false)
 const toastMessage = ref('')
@@ -31,336 +33,259 @@ const fetchItems = async () => {
     try {
         const res = await axios.get(`/api/reagents/items?request_id=${props.request.id}`)
         items.value = res.data
-    } catch (e) { console.error('Failed to load items', e) }
-    finally { isLoadingItems.value = false }
+    } catch (e) {
+        toast('加载实物信息失败', 'error')
+        console.error('Failed to load items', e)
+    } finally {
+        isLoadingItems.value = false
+    }
+}
+
+// --- 档案弹窗 ---
+const lifecycleDialog = ref({
+  isOpen: false,
+  itemUuid: null as string | null
+})
+const openLifecycleDialog = (uuid: string) => {
+  lifecycleDialog.value = { isOpen: true, itemUuid: uuid }
 }
 
 watch(() => [props.open, props.request?.id], ([open]) => {
-    if (open) { batchLocation.value = ''; fetchItems() }
+    if (open) fetchItems()
 }, { immediate: true })
 
-const storeAllItems = async () => {
-    if (!batchLocation.value) { toast('请先选择或输入库位', 'error'); return }
-    try {
-        await Promise.all(arrivedItems.value.map(item =>
-            axios.put(`/api/reagents/items/${item.uuid}/status`, { status: '在库', location: batchLocation.value })
-        ))
-        toast(`${arrivedItems.value.length} 瓶已全部入库至 ${batchLocation.value}`)
-        batchLocation.value = ''; fetchItems(); emit('refresh')
-    } catch (e) { toast('入库操作失败', 'error') }
-}
-
-const consumeItem = async (item: any) => {
-    try {
-        await axios.put(`/api/reagents/items/${item.uuid}/status`, { status: '已耗尽' })
-        toast('已标记为空瓶核销'); fetchItems(); emit('refresh')
-    } catch (e) { toast('操作失败', 'error') }
-}
-
-const getStepStatus = (stepName: string) => {
-    if (!props.request) return 'pending'
+// ── BPM-A 状态机 ──
+const bpmASteps = computed(() => {
+    if (!props.request) return []
     const status = props.request.status
-    
-    // BPM-A 纯净状态机：展示申购单自身的流转，与 BPM-B 完全解耦
-    if (stepName === 'submitted') return 'completed'
-    
-    if (stepName === 'approved') {
-        // 待审批/待采购 → 这一步正在进行中
-        if (status === '待审批' || status === '待采购') return 'current'
-        // 已接单及后续状态 → 这一步已完成
-        if (['已接单', '已入库', '已驳回'].includes(status)) return 'completed'
-        return 'pending'
-    }
-    
-    if (stepName === 'arrived') {
-        // 已接单 → 已下单等待到货，此步进行中
-        if (status === '已接单') return 'current'
-        // 已入库 → 已到货且已处理
-        if (status === '已入库') return 'completed'
-        return 'pending'
-    }
-    
-    if (stepName === 'instorage') {
-        if (status !== '已入库') return 'pending'
-        // 已入库且有试剂实体绑定 → 確认完成
-        const allStored = items.value.length > 0 && 
-            items.value.every(i => i.status === '在库' || i.status === '已耗尽')
-        return allStored ? 'completed' : 'current'
-    }
-    
-    return 'pending'
-}
+    const isControlled = props.request.is_controlled
 
-const getTimelineLabel = (stepStatus: string, defaultLabel: string) => {
-    if (stepStatus === 'completed') return '已完成'
-    if (stepStatus === 'current') return '进行中'
-    return defaultLabel
-}
-
-const getStepTime = (stepName: string) => {
-    if (!props.request) return null
-    if (stepName === 'submitted') return props.request.created_at
-    // 对于已完成的步骤使用 updated_at 作为近似时间
-    return getStepStatus(stepName) === 'completed' ? props.request.updated_at : null
-}
-
-const getStepOperator = (stepName: string) => {
-    if (!props.request) return ''
-    const status = getStepStatus(stepName)
-    if (status === 'pending') return ''
-    switch (stepName) {
-        case 'submitted': return props.request.requestor?.real_name || '申购人'
-        case 'approved': return '团队长 / 采购部'
-        case 'arrived': return '仓管收货清点'
-        case 'instorage': return '上架人员'
-        default: return ''
+    const fmt = (dateStr: string | null) => {
+        if (!dateStr) return ''
+        return new Date(dateStr).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
     }
-}
 
-const formatDateTime = (dateStr: string | null) => {
-    if (!dateStr) return ''
-    return new Date(dateStr).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    const step1 = {
+        key: 'submitted',
+        label: '提交申购申请',
+        desc: `${props.request.requestor?.real_name || '研发人员'} 提交了申购请求。`,
+        state: 'completed',
+        operator: props.request.requestor?.real_name || '申购人',
+        time: fmt(props.request.created_at),
+    }
+
+    const step2_controlled = isControlled ? (() => {
+        let state: string
+        if (status === '待审批') state = 'current'
+        else if (['待采购', '已接单', '已入库', '已驳回'].includes(status)) state = 'completed'
+        else state = 'pending'
+        return {
+            key: 'leader-approve',
+            label: '管控品团队长审批',
+            desc: '管控品需经由团队长审批后，方可进入采购流程。',
+            state,
+            operator: state !== 'pending' ? '团队长' : '',
+            time: state === 'completed' ? fmt(props.request.updated_at) : '',
+        }
+    })() : null
+
+    const step3 = (() => {
+        let state: string
+        if (status === '待采购' || status === '待审批') state = 'current'
+        else if (['已接单', '已入库'].includes(status)) state = 'completed'
+        else if (status === '已驳回') state = 'rejected'
+        else state = 'pending'
+        return {
+            key: 'purchasing',
+            label: status === '已驳回' ? '申购已驳回' : '采购部接单与下单',
+            desc: status === '已驳回'
+                ? '本申购单已被驳回，如有需要请重新提交。'
+                : '采购部汇总需求，生成易派客采购订单并发向供应商。',
+            state,
+            operator: ['completed', 'current'].includes(state) ? '采购部' : '',
+            time: state === 'completed' ? fmt(props.request.updated_at) : '',
+        }
+    })()
+
+    const step4 = (() => {
+        let state: string
+        if (status === '已接单') state = 'completed'
+        else if (status === '已驳回') state = 'rejected'
+        else state = 'pending'
+        return {
+            key: 'confirmed',
+            label: '采购员确认接单',
+            desc: '采购员已确认接单，向供应商下单，申购审批流程闭环。',
+            state,
+            operator: state === 'completed' ? '采购部' : '',
+            time: state === 'completed' ? fmt(props.request.updated_at) : '',
+        }
+    })()
+
+    type Step = typeof step1
+    return [step1, step2_controlled, step3, step4].filter((s): s is Step => s !== null)
+})
+
+const stateVariant = (state: string): any => {
+    if (state === 'completed') return 'success'
+    if (state === 'current') return 'info'
+    if (state === 'rejected') return 'destructive'
+    return 'default'
+}
+const stateBadgeLabel = (state: string) => {
+    if (state === 'completed') return '已完成'
+    if (state === 'current') return '进行中'
+    if (state === 'rejected') return '已驳回'
+    return '等待中'
 }
 </script>
 
 <template>
-  <Dialog :open="open" @close="$emit('close')" title="申购单流转进度" class="max-w-2xl px-2">
-      <div v-if="request" class="py-4 space-y-8">
-
-          <!-- Request Info Summary -->
-          <div class="bg-gray-50 rounded-xl p-4 border border-gray-100 mb-6">
-              <div class="flex justify-between items-start mb-3 border-b border-gray-100 pb-3">
+  <Dialog :open="open" size="lg" @close="$emit('close')">
+      <template #header>
+          <div class="flex flex-col">
+              <span class="text-xl font-bold text-gray-900 tracking-tight">申购单进度流转</span>
+              <span class="text-xs text-gray-500 font-normal mt-0.5">审批与到货状态追踪</span>
+          </div>
+      </template>
+      <div v-if="request" class="p-6 space-y-6">
+          <!-- Request Info Card -->
+          <div class="bg-gray-50/50 rounded-2xl p-5 border border-gray-100 shadow-inner">
+              <div class="flex justify-between items-start mb-4 border-b border-gray-100 pb-4">
                   <div>
-                      <h4 class="text-sm font-bold text-gray-900 mb-1">申购单号: #{{ request.id }}</h4>
-                      <p class="text-xs text-gray-500">试剂名称: <span class="font-medium text-gray-700">{{ request.reagent_catalog?.name }}</span></p>
-                      <p class="text-xs text-gray-500 mt-1">申购数量: <span class="font-medium text-gray-700">{{ request.quantity }} {{ request.reagent_catalog?.unit || '瓶' }}</span></p>
-                      <p class="text-xs text-gray-500 mt-1">申购人: <span class="font-medium text-gray-700">{{ request.requestor?.real_name || 'System' }}</span></p>
+                      <h4 class="text-base font-bold text-gray-900 mb-1">单号 #{{ request.id }}</h4>
+                      <div class="flex items-center gap-2 text-xs text-gray-500">
+                          <span>试剂: <span class="font-bold text-gray-700">{{ request.reagent_catalog?.name }}</span></span>
+                          <span class="text-gray-300">|</span>
+                          <span>数量: <span class="font-bold text-gray-700">{{ formatNumber(request.quantity, 0) }} 瓶</span></span>
+                      </div>
                   </div>
-                  <div class="text-right">
-                      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          当前状态: {{ request.status }}
-                      </span>
+                  <div class="flex flex-col items-end gap-2">
+                       <Badge variant="info" class="h-6 px-3">{{ request.status }}</Badge>
+                       <Badge v-if="request.is_controlled" variant="destructive" class="h-5 px-2 text-[10px] font-bold">⚠️ 管控品</Badge>
                   </div>
               </div>
-
-              <!-- Extended Fields Summary -->
-              <div class="grid grid-cols-2 gap-4 text-xs mt-3">
+              <div class="grid grid-cols-2 gap-8">
                   <div class="space-y-1.5 flex flex-col">
-                      <span class="text-gray-400">需求类型</span>
-                      <span class="font-medium" :class="request.request_type === '紧急' ? 'text-red-600' : 'text-gray-900'">
-                          {{ request.request_type || '日常' }}
-                      </span>
+                      <span class="text-[11px] font-bold text-gray-400 uppercase tracking-wider">需求优先级</span>
+                      <span class="text-sm font-semibold" :class="request.request_type === '紧急' ? 'text-red-600' : 'text-gray-700'">{{ request.request_type || '日常采购' }}</span>
                   </div>
-                  <div class="space-y-1.5 flex flex-col">
-                      <span class="text-gray-400">要求交期</span>
-                      <span class="font-medium text-gray-900">{{ request.expected_delivery || '未指定' }}</span>
-                  </div>
-                  <div class="space-y-1.5 flex flex-col col-span-2 mt-1" v-if="request.project_name">
-                      <span class="text-gray-400">所属项目</span>
-                      <div class="flex items-center gap-2">
-                          <span class="font-medium text-gray-900">{{ request.project_name }}</span>
-                          <span v-if="request.project_id" class="px-2 py-[2px] bg-gray-200 text-gray-600 rounded text-[10px] font-mono">{{ request.project_id }}</span>
-                      </div>
+                  <div class="space-y-1.5 flex flex-col border-l border-gray-100 pl-8">
+                      <span class="text-[11px] font-bold text-gray-400 uppercase tracking-wider">要求交期</span>
+                      <span class="text-sm font-semibold text-gray-700">{{ request.expected_delivery || '尽快到货' }}</span>
                   </div>
               </div>
           </div>
 
-          <!-- Vertical Timeline -->
-          <div class="relative pl-12 space-y-12 before:absolute before:inset-0 before:left-5 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 before:to-transparent">
-
-              <!-- 1. Submitted -->
-              <div class="relative flex items-start group">
-                  <div class="absolute -left-12 flex items-center justify-center w-10 h-10 rounded-full border-4 border-white shrink-0 shadow-sm z-10"
-                       :class="getStepStatus('submitted') === 'completed' ? 'bg-green-500' : 'bg-blue-500'">
-                      <CheckCircle2 v-if="getStepStatus('submitted') === 'completed'" class="w-5 h-5 text-white" />
-                      <Clock v-else class="w-5 h-5 text-white" />
-                  </div>
-                  <div class="flex-1 p-4 rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow">
-                      <div class="flex items-center justify-between space-x-2 mb-1">
-                          <div class="font-bold text-gray-900 text-sm">提交申购申请</div>
-                          <span class="text-xs font-medium text-green-500 bg-green-50 px-2 py-0.5 rounded">已完成</span>
-                      </div>
-                      <div class="text-xs text-gray-500 leading-relaxed">{{ request.requestor?.real_name || '研发人员' }} 提交了申购请求。</div>
-                      <div v-if="getStepTime('submitted')" class="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
-                          <Clock class="w-3 h-3" /> {{ formatDateTime(getStepTime('submitted')) }}
-                      </div>
-                  </div>
+          <!-- 申购审批时间线 -->
+          <div>
+              <div class="flex items-center gap-2 mb-4 px-1">
+                  <ShoppingCart class="w-4 h-4 text-indigo-500" />
+                  <span class="text-sm font-bold text-gray-800 tracking-tight">申购审批流程</span>
               </div>
 
-              <!-- 2. Approved & Purchasing -->
-              <div class="relative flex items-start group">
-                  <div class="absolute -left-12 flex items-center justify-center w-10 h-10 rounded-full border-4 border-white bg-gray-200 shrink-0 shadow-sm z-10"
-                       :class="getStepStatus('approved') === 'completed' ? 'bg-green-500' : (getStepStatus('approved') === 'current' ? 'bg-blue-500 ring-4 ring-blue-50' : 'bg-gray-100')">
-                      <CheckCircle2 v-if="getStepStatus('approved') === 'completed'" class="w-5 h-5 text-white" />
-                      <Clock v-else-if="getStepStatus('approved') === 'current'" class="w-5 h-5 text-white" />
-                      <div v-else class="w-3 h-3 bg-gray-300 rounded-full"></div>
-                  </div>
-                  <div class="flex-1 p-4 rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow" :class="getStepStatus('approved') === 'pending' ? 'opacity-60 grayscale-[0.5]' : ''">
-                      <div class="flex items-center justify-between space-x-2 mb-1">
-                          <div class="font-bold text-gray-900 text-sm">采购审批与下单</div>
-                          <span class="text-xs font-medium px-2 py-0.5 rounded" :class="getStepStatus('approved') === 'completed' ? 'text-green-500 bg-green-50' : (getStepStatus('approved') === 'current' ? 'text-blue-500 bg-blue-50' : 'text-gray-400 bg-gray-50')">
-                            {{ getTimelineLabel(getStepStatus('approved'), '待审批/采购') }}
-                          </span>
+              <div class="relative pl-12 space-y-8 before:absolute before:inset-0 before:left-[19px] before:h-full before:w-0.5 before:bg-gray-100">
+                  <div v-for="step in bpmASteps" :key="step.key" class="relative flex items-start">
+                      <div class="absolute -left-12 flex items-center justify-center w-10 h-10 rounded-full border-4 border-white shrink-0 shadow-sm z-10 transition-all duration-300"
+                           :class="[
+                               step.state === 'completed' ? 'bg-emerald-500' : 
+                               step.state === 'current' ? 'bg-blue-600 shadow-blue-200' : 
+                               step.state === 'rejected' ? 'bg-red-500' : 'bg-gray-200'
+                           ]">
+                          <CheckCircle2 v-if="step.state === 'completed'" class="w-5 h-5 text-white" />
+                          <XCircle v-else-if="step.state === 'rejected'" class="w-5 h-5 text-white" />
+                          <Clock v-else-if="step.state === 'current'" class="w-5 h-5 text-white animate-pulse" />
+                          <div v-else class="w-2.5 h-2.5 bg-gray-400/50 rounded-full"></div>
                       </div>
-                      <div class="text-xs text-gray-500 leading-relaxed">采购人员汇总需求，生成易派客采购订单并发向供应商。</div>
-                      <div v-if="getStepStatus('approved') !== 'pending'" class="text-[10px] text-gray-400 mt-2 flex items-center gap-2">
-                          <span v-if="getStepTime('approved')" class="flex items-center gap-1"><Clock class="w-3 h-3" /> {{ formatDateTime(getStepTime('approved')) }}</span>
-                          <span v-if="getStepOperator('approved')" class="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded font-medium">👤 {{ getStepOperator('approved') }}</span>
-                      </div>
-                  </div>
-              </div>
-
-              <!-- 3. Logistics & Arrival -->
-              <div class="relative flex items-start group">
-                  <div class="absolute -left-12 flex items-center justify-center w-10 h-10 rounded-full border-4 border-white bg-gray-200 shrink-0 shadow-sm z-10"
-                       :class="getStepStatus('arrived') === 'completed' ? 'bg-green-500' : (getStepStatus('arrived') === 'current' ? 'bg-blue-500 ring-4 ring-blue-50' : 'bg-gray-100')">
-                      <CheckCircle2 v-if="getStepStatus('arrived') === 'completed'" class="w-5 h-5 text-white" />
-                      <Truck v-else-if="getStepStatus('arrived') === 'current'" class="w-5 h-5 text-white" />
-                      <div v-else class="w-3 h-3 bg-gray-300 rounded-full"></div>
-                  </div>
-                  <div class="flex-1 p-4 rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow" :class="getStepStatus('arrived') === 'pending' ? 'opacity-60 grayscale-[0.5]' : ''">
-                      <div class="flex items-center justify-between space-x-2 mb-1">
-                          <div class="font-bold text-gray-900 text-sm">采购单已接受，等待将货到实验室</div>
-                          <span class="text-xs font-medium px-2 py-0.5 rounded" :class="getStepStatus('arrived') === 'completed' ? 'text-green-500 bg-green-50' : (getStepStatus('arrived') === 'current' ? 'text-blue-500 bg-blue-50' : 'text-gray-400 bg-gray-50')">
-                            {{ getTimelineLabel(getStepStatus('arrived'), '等待采购') }}
-                          </span>
-                      </div>
-                      <div class="text-xs text-gray-500 leading-relaxed">采购已向供应商下单，试剂将由采购员安排到货并通知到实验室领用。</div>
-                      <div v-if="getStepStatus('arrived') !== 'pending'" class="text-[10px] text-gray-400 mt-2 flex items-center gap-2">
-                          <span v-if="getStepTime('arrived')" class="flex items-center gap-1"><Clock class="w-3 h-3" /> {{ formatDateTime(getStepTime('arrived')) }}</span>
-                          <span v-if="getStepOperator('arrived')" class="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded font-medium">📦 {{ getStepOperator('arrived') }}</span>
-                      </div>
-                  </div>
-              </div>
-
-              <!-- 4. Storage -->
-              <div class="relative flex items-start group">
-                  <div class="absolute -left-12 flex items-center justify-center w-10 h-10 rounded-full border-4 border-white shrink-0 shadow-sm z-10"
-                       :class="getStepStatus('instorage') === 'completed' ? 'bg-green-500' : (getStepStatus('instorage') === 'current' ? 'bg-blue-500 ring-4 ring-blue-50' : 'bg-gray-100 border-gray-200')">
-                      <PackageCheck v-if="getStepStatus('instorage') === 'completed'" class="w-5 h-5 text-white" />
-                      <Package v-else-if="getStepStatus('instorage') === 'current'" class="w-5 h-5 text-white" />
-                      <div v-else class="w-3 h-3 bg-gray-300 rounded-full"></div>
-                  </div>
-                  <div class="flex-1 rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden"
-                       :class="getStepStatus('instorage') === 'pending' ? 'opacity-60 grayscale-[0.5]' : ''">
-
-                      <!-- Header -->
-                      <div class="flex items-center justify-between p-4 border-b border-gray-100">
-                          <div class="font-bold text-gray-900 text-sm">扫码入库与库存管理</div>
-                          <div class="flex items-center gap-2">
-                              <button @click="fetchItems" class="text-gray-400 hover:text-blue-500 transition-colors p-1 rounded">
-                                  <RefreshCw class="w-3.5 h-3.5" />
-                              </button>
-                              <span class="text-xs font-medium px-2 py-0.5 rounded"
-                                  :class="getStepStatus('instorage') === 'completed' ? 'text-green-500 bg-green-50' : (getStepStatus('instorage') === 'current' ? 'text-blue-500 bg-blue-50' : 'text-gray-400 bg-gray-50')">
-                                {{ getStepStatus('instorage') === 'completed' ? '全部入库' : (getStepStatus('instorage') === 'current' ? `待入库 ${arrivedItems.length}/${items.length} 瓶` : '待操作') }}
+                      <div class="flex-1 p-4 rounded-2xl border transition-all duration-300 bg-white"
+                           :class="step.state === 'pending' ? 'opacity-40 grayscale' : 'border-gray-100 shadow-sm hover:shadow-md hover:border-blue-100'">
+                          <div class="flex items-center justify-between mb-1.5">
+                              <div class="font-bold text-gray-900 text-sm tracking-tight">{{ step.label }}</div>
+                              <Badge :variant="stateVariant(step.state)" class="h-5 text-[10px] px-2 font-bold">{{ stateBadgeLabel(step.state) }}</Badge>
+                          </div>
+                          <p class="text-xs text-gray-500 leading-relaxed font-bold opacity-80">{{ step.desc }}</p>
+                          <div v-if="step.operator || step.time" class="flex items-center gap-3 mt-3">
+                              <span v-if="step.time" class="flex items-center gap-1 text-[10px] text-gray-400 font-mono">
+                                  <Clock class="w-3 h-3" /> {{ step.time }}
+                              </span>
+                              <span v-if="step.operator" class="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full font-bold border border-indigo-100/50">
+                                  👤 {{ step.operator }}
                               </span>
                           </div>
                       </div>
+                  </div>
+              </div>
+          </div>
 
-                      <!-- Pending state -->
-                      <div v-if="getStepStatus('instorage') === 'pending'" class="p-4">
-                          <p class="text-xs text-gray-500">等待采购人员确认到货并生成条码后，将在此处显示操作界面。</p>
-                      </div>
+          <!-- 关联实体 -->
+          <div class="border-t border-dashed border-gray-200 pt-5">
+              <div class="flex items-center justify-between mb-4">
+                  <div class="flex items-center gap-2 px-1">
+                      <Package class="w-4 h-4 text-teal-500" />
+                      <span class="text-sm font-bold text-gray-800">到货实物追踪</span>
+                  </div>
+                  <Button variant="ghost" size="sm" @click="fetchItems" class="h-7 w-7 p-0 rounded-full">
+                      <RefreshCw class="w-3.5 h-3.5 text-gray-400" />
+                  </Button>
+              </div>
 
-                      <!-- Active state -->
-                      <div v-else class="p-4 space-y-3">
-                          <div v-if="isLoadingItems" class="text-xs text-center text-gray-400 py-4">加载中...</div>
+              <div v-if="isLoadingItems" class="p-8 text-center text-gray-400">加载中...</div>
 
-                          <!-- ① 待入库：统一批量操作区（N 瓶共用一个库位） -->
-                          <div v-if="arrivedItems.length > 0" class="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
-                              <div class="flex items-center justify-between">
-                                  <span class="text-xs font-semibold text-blue-800">待入库 · {{ arrivedItems.length }} 瓶</span>
-                                  <div class="flex flex-wrap gap-1">
-                                      <span v-for="item in arrivedItems" :key="item.uuid"
-                                            class="font-mono text-[10px] bg-white border border-blue-200 text-gray-500 px-1.5 py-0.5 rounded">
-                                          #{{ item.uuid.substring(0, 8).toUpperCase() }}
-                                      </span>
-                                  </div>
-                              </div>
-                              <div class="flex flex-wrap gap-1.5">
-                                  <button v-for="loc in quickLocations" :key="loc"
-                                          @click="batchLocation = loc"
-                                          class="text-xs px-2.5 py-1 rounded-md border transition-all font-medium"
-                                          :class="batchLocation === loc ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'">
-                                      📍 {{ loc }}
-                                  </button>
-                              </div>
-                              <div class="flex gap-2">
-                                  <Input v-model="batchLocation" placeholder="或手动输入库位..." class="h-8 text-xs flex-1" />
-                                  <button @click="storeAllItems"
-                                          :disabled="!batchLocation"
-                                          class="px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                                          :class="batchLocation ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-500'">
-                                      ✅ 全部确认入库
-                                  </button>
-                              </div>
-                          </div>
+              <div v-else-if="items.length === 0" class="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 px-6 py-8 text-center">
+                  <Package class="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                  <p class="text-xs text-gray-400 font-bold uppercase tracking-wider">No associated items</p>
+                  <p class="text-xs text-gray-400 mt-2 max-w-[280px] mx-auto leading-relaxed">等待采购单产生实物条码后，系统将自动汇总关联信息。</p>
+              </div>
 
-                          <!-- ② 在库：紧凑列表（每瓶一行） -->
-                          <div v-if="storedItems.length > 0" class="rounded-lg border border-green-200 overflow-hidden">
-                              <div class="bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-800 border-b border-green-200">在库 · {{ storedItems.length }} 瓶</div>
-                              <div v-for="item in storedItems" :key="item.uuid"
-                                   class="flex items-center justify-between px-3 py-2 bg-white border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                                  <div class="flex items-center gap-2">
-                                      <span class="font-mono text-[10px] text-gray-400">#{{ item.uuid.substring(0, 8).toUpperCase() }}</span>
-                                      <span class="flex items-center gap-0.5 text-xs text-gray-500">
-                                          <MapPin class="w-3 h-3" /> {{ item.location }}
-                                      </span>
-                                      <span class="text-xs text-gray-400">剩余 {{ item.remaining_volume }}{{ item.reagent_catalog?.unit }}</span>
-                                  </div>
-                                  <button @click="consumeItem(item)"
-                                          class="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 transition-all">
-                                      <Trash2 class="w-2.5 h-2.5" /> 核销
-                                  </button>
-                              </div>
-                          </div>
-
-                          <!-- ③ 已耗尽：折叠摘要行 -->
-                          <div v-if="consumedItems.length > 0" class="rounded-lg border border-gray-200 px-3 py-2 flex items-center gap-2">
-                              <span class="text-[10px] text-gray-400 shrink-0">已耗尽 {{ consumedItems.length }} 瓶：</span>
-                              <div class="flex flex-wrap gap-1">
-                                  <span v-for="item in consumedItems" :key="item.uuid"
-                                        class="font-mono text-[10px] bg-gray-100 text-gray-400 px-1 py-0.5 rounded line-through">
-                                      #{{ item.uuid.substring(0, 8).toUpperCase() }}
-                                  </span>
-                              </div>
-                          </div>
-
-                          <!-- Empty state -->
-                          <div v-if="!isLoadingItems && items.length === 0" class="text-xs text-center text-gray-400 py-4">
-                              暂无关联试剂条码
+              <div v-else class="space-y-4">
+                  <!-- 待入库（只读） -->
+                  <div v-if="arrivedItems.length > 0" class="rounded-2xl border border-blue-100 bg-blue-50/30 p-4 space-y-3">
+                      <div class="flex items-center justify-between">
+                          <span class="text-xs font-bold text-blue-800">待领入库瓶数: {{ arrivedItems.length }}</span>
+                          <div class="flex flex-wrap gap-1 justify-end max-w-[50%]">
+                              <span v-for="item in arrivedItems" :key="item.uuid"
+                                    class="font-mono text-[9px] bg-white border border-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-bold">
+                                  #{{ item.uuid.substring(0, 8).toUpperCase() }}
+                              </span>
                           </div>
                       </div>
+                      <p class="text-xs text-blue-700">
+                        入库操作请在「到货台账/扫码页」执行，此窗口仅用于流程追踪。
+                      </p>
+                  </div>
 
-                      <!-- Completion timestamp -->
-                      <div v-if="getStepStatus('instorage') === 'completed' && request.updated_at"
-                           class="px-4 pb-3 text-[10px] text-gray-400 flex items-center gap-1">
-                          <Clock class="w-3 h-3" /> 完成时间: {{ formatDateTime(request.updated_at) }}
+                  <!-- 在库 -->
+                  <div v-if="storedItems.length > 0" class="rounded-2xl border border-green-100 overflow-hidden shadow-sm">
+                      <div class="bg-green-50/50 px-4 py-2 text-[10px] font-bold text-green-700 border-b border-green-100 uppercase tracking-widest">目前在库资产</div>
+                      <div v-for="item in storedItems" :key="item.uuid"
+                           class="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-50 last:border-0 hover:bg-green-50/30 transition-colors">
+                          <div class="flex items-center gap-4">
+                              <button @click="openLifecycleDialog(item.uuid)" class="font-mono text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1.5" title="详情档案">
+                                <FileText class="w-3.5 h-3.5"/> #{{ item.uuid.substring(0,8).toUpperCase() }}
+                              </button>
+                              <span class="flex items-center gap-1 text-xs text-gray-500 font-bold">
+                                  <MapPin class="w-3.5 h-3.5 text-gray-300" /> {{ item.location }}
+                              </span>
+                          </div>
+                          <Badge variant="success" class="h-5 text-[10px] font-bold">{{ formatAmount(item.remaining_volume, item.reagent_catalog?.unit, 'ml') }}</Badge>
                       </div>
                   </div>
               </div>
-
           </div>
       </div>
-
-      <!-- Toast Notification -->
-      <Transition
-        enter-active-class="transition ease-out duration-300"
-        enter-from-class="translate-y-4 opacity-0"
-        enter-to-class="translate-y-0 opacity-100"
-        leave-active-class="transition ease-in duration-200"
-        leave-from-class="translate-y-0 opacity-100"
-        leave-to-class="translate-y-4 opacity-0"
-      >
-        <div v-if="showToast" class="fixed bottom-6 right-6 z-[9999] max-w-sm">
-          <div :class="[
-            'px-4 py-3 rounded-lg shadow-lg border text-sm font-medium flex items-center gap-2',
-            toastType === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'
-          ]">
-            <span>{{ toastMessage }}</span>
+      <template #footer>
+          <div class="flex justify-between items-center w-full">
+              <span class="text-[10px] text-gray-400 font-bold uppercase tracking-widest opacity-60">Ready for full lifecycle tracking</span>
+              <Button variant="secondary" @click="$emit('close')">确定</Button>
           </div>
-        </div>
-      </Transition>
+      </template>
   </Dialog>
+
+  <!-- 全生命周期悬浮窗 -->
+  <ItemLifecycleDialog 
+    :is-open="lifecycleDialog.isOpen" 
+    :item-uuid="lifecycleDialog.itemUuid"
+    @close="lifecycleDialog.isOpen = false"
+    @refresh-needed="fetchItems"
+  />
 </template>

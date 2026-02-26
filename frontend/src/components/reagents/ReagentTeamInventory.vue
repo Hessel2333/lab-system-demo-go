@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { Loader2, MapPin, FlaskConical, Users, ChevronDown, ChevronRight, AlertTriangle, MinusCircle, Trash2 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
+import { formatAmount, formatRatio, normalizeUnit } from '@/lib/quantity'
 
 interface ReagentItem {
   uuid: string
@@ -270,7 +271,7 @@ const formatDate = (d: string) => {
                     ></div>
                   </div>
                   <span class="text-xs text-gray-500 whitespace-nowrap">
-                    {{ item.remaining_volume }}/{{ item.capacity }} {{ item.reagent_catalog?.unit }}
+                    {{ formatRatio(item.remaining_volume, item.capacity, item.reagent_catalog?.unit, 'ml') }}
                   </span>
                 </div>
 
@@ -302,8 +303,8 @@ const formatDate = (d: string) => {
     </template>
     
     <!-- 领用耗用弹窗 -->
-    <div v-if="consumeDialog.isOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" @click.self="consumeDialog.isOpen=false">
-      <div class="bg-white rounded-2xl w-full max-w-sm shadow-xl overflow-hidden p-6 space-y-6">
+    <div v-if="consumeDialog.isOpen" class="apple-modal-backdrop" @click.self="consumeDialog.isOpen=false">
+      <div class="apple-modal-panel max-w-sm overflow-hidden p-6 space-y-6">
         <div>
           <h3 class="text-lg font-bold text-gray-900">登记试剂消耗</h3>
           <p class="text-sm text-gray-500 mt-1" v-if="consumeDialog.item">
@@ -316,9 +317,9 @@ const formatDate = (d: string) => {
             <label class="text-sm font-semibold text-gray-700">本次耗用量</label>
             <div class="relative">
               <input type="number" v-model="consumeDialog.volume" min="1" :max="consumeDialog.item?.remaining_volume" class="w-full h-10 px-3 bg-gray-50 border border-gray-200 rounded-lg pr-12 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
-              <span class="absolute right-3 top-2.5 text-sm text-gray-400">{{ consumeDialog.item?.reagent_catalog?.unit?.replace(/[0-9]/g, '') || 'ml' }}</span>
+              <span class="absolute right-3 top-2.5 text-sm text-gray-400">{{ normalizeUnit(consumeDialog.item?.reagent_catalog?.unit, 'ml') }}</span>
             </div>
-            <p class="text-[11px] text-gray-400 text-right mt-1">当前余量: {{ consumeDialog.item?.remaining_volume }}</p>
+            <p class="text-[11px] text-gray-400 text-right mt-1">当前余量: {{ formatAmount(consumeDialog.item?.remaining_volume, consumeDialog.item?.reagent_catalog?.unit, 'ml') }}</p>
           </div>
 
           <div class="space-y-2">

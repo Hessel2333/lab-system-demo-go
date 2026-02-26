@@ -5,8 +5,13 @@ import { toast } from 'vue-sonner'
 import {
   Loader2, MapPin, FlaskConical, Users, Search,
   ChevronDown, ChevronRight, AlertTriangle,
-  MinusCircle, Trash2, LayoutList, LayoutGrid
+  MinusCircle, Trash2, FileText
 } from 'lucide-vue-next'
+import Button from '@/components/ui/Button.vue'
+import Badge from '@/components/ui/Badge.vue'
+import Dialog from '@/components/ui/Dialog.vue'
+import ItemLifecycleDialog from '@/components/reagents/ItemLifecycleDialog.vue'
+import { formatAmount, formatNumber, formatRatio, normalizeUnit } from '@/lib/quantity'
 
 // ——— 类型定义 ———
 interface ReagentItem {
@@ -77,7 +82,28 @@ const consumeDialog = ref({
   remarks: ''
 })
 
+// --- 档案弹窗 ---
+const lifecycleDialog = ref({
+  isOpen: false,
+  itemUuid: null as string | null
+})
+const openLifecycleDialog = (uuid: string) => {
+  lifecycleDialog.value = { isOpen: true, itemUuid: uuid }
+}
+
+const emit = defineEmits(['switch-to-arrival'])
+
 // ——— 数据获取 ———
+const pendingArrivals = ref<ReagentItem[]>([])
+const fetchPendingArrivals = async () => {
+  try {
+    const res = await axios.get('/api/reagents/items?status=已到货&requestor_id=1')
+    pendingArrivals.value = res.data || []
+  } catch (e) {
+    console.error('Failed to fetch pending arrivals', e)
+  }
+}
+
 const fetchTable = async () => {
   isLoadingTable.value = true
   try {
@@ -101,7 +127,11 @@ const fetchTeam = async () => {
   }
 }
 
-const fetchAll = () => { fetchTable(); fetchTeam() }
+const fetchAll = () => { 
+  fetchTable()
+  fetchTeam()
+  fetchPendingArrivals()
+}
 
 onMounted(fetchAll)
 
@@ -175,7 +205,7 @@ const submitConsume = async () => {
 const markAsEmpty = async (item: ReagentItem) => {
   if (!confirm(`确认将该瓶 [${item.reagent_catalog?.name}] 标记为已耗尽并核销吗？`)) return
   try {
-    await axios.put(`/api/reagents/items/${item.uuid}/status`, { status: '已耗尽', location: item.location })
+    await axios.post(`/api/reagents/items/${item.uuid}/deplete`, { remarks: '库存台账执行耗尽核销' })
     toast.success('空瓶已核销回收')
     fetchAll()
   } catch (e: any) {
@@ -214,13 +244,12 @@ const getStatusLabel = (status: string) => {
   const map: Record<string, string> = { InStorage: '在库', Arrived: '已到货', Used: '已耗尽' }
   return map[status] || status
 }
-const getStatusColor = (status: string) => {
-  const map: Record<string, string> = {
-    '在库': 'bg-green-100 text-green-800',
-    '已到货': 'bg-blue-100 text-blue-800',
-    '已耗尽': 'bg-gray-100 text-gray-500',
-  }
-  return map[getStatusLabel(status)] || 'bg-gray-100 text-gray-800'
+const getStatusVariant = (status: string): any => {
+  const s = getStatusLabel(status)
+  if (s === '在库') return 'success'
+  if (s === '已到货') return 'info'
+  if (s === '已耗尽') return 'default'
+  return 'default'
 }
 const getRemainingColor = (pct: number) => {
   if (pct <= 15) return 'bg-red-500'
@@ -231,6 +260,23 @@ const getRemainingColor = (pct: number) => {
 
 <template>
   <div class="space-y-4">
+    <!-- 到货提醒 Banner -->
+    <div v-if="pendingArrivals.length > 0" 
+         class="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-2 duration-500">
+        <div class="flex items-center gap-3">
+            <div class="p-2 bg-amber-100 text-amber-600 rounded-full">
+                <AlertTriangle class="h-5 w-5" />
+            </div>
+            <div>
+                <p class="text-amber-900 font-bold tracking-tight">您有 {{ pendingArrivals.length }} 件申购试剂已到货</p>
+                <p class="text-amber-700 text-xs mt-0.5">实物已送至暂存区，请尽快领取并办理入库以进入库存台账</p>
+            </div>
+        </div>
+        <Button @click="emit('switch-to-arrival')" variant="outline" size="sm" class="bg-white border-amber-200 hover:bg-amber-100 text-amber-700 font-bold transition-all">
+            立即办理入库 →
+        </Button>
+    </div>
+
     <!-- 顶部工具栏 -->
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
       <!-- 左侧：搜索框（仅表格视图显示） -->
@@ -241,12 +287,12 @@ const getRemainingColor = (pct: number) => {
       <div v-else class="text-sm text-gray-500">按团队分组展示，共 {{ allGroups.length }} 个团队</div>
 
       <!-- 右侧：视图切换 -->
-      <div class="flex items-center gap-1 bg-gray-100 p-1 rounded-lg shrink-0">
-        <button @click="viewMode='team'" :class="['flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all', viewMode==='team' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700']">
-          <LayoutGrid class="w-3.5 h-3.5" /> 团队视图
+      <div class="apple-segmented shrink-0">
+        <button @click="viewMode='team'" :class="['apple-segmented-btn', viewMode==='team' ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']">
+          团队台账
         </button>
-        <button @click="viewMode='table'" :class="['flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all', viewMode==='table' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700']">
-          <LayoutList class="w-3.5 h-3.5" /> 全库台账
+        <button @click="viewMode='table'" :class="['apple-segmented-btn', viewMode==='table' ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']">
+          全库台账
         </button>
       </div>
     </div>
@@ -291,10 +337,10 @@ const getRemainingColor = (pct: number) => {
             <button class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left" @click="toggleCategory(String(catalogName))">
               <div class="flex items-center gap-3">
                 <component :is="isExpanded(String(catalogName)) ? ChevronDown : ChevronRight" class="w-4 h-4 text-gray-400 shrink-0" />
-                <span class="font-semibold text-gray-800 text-sm">{{ catalogName }}</span>
-                <span class="text-xs text-gray-400">{{ items[0]?.reagent_catalog?.formula ?? '' }}</span>
-                <span v-if="items[0]?.reagent_catalog?.is_controlled" class="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-600 font-medium">管控品</span>
-                <span class="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">{{ items[0]?.reagent_catalog?.category }}</span>
+                <span class="font-bold text-gray-900 text-sm tracking-tight">{{ catalogName }}</span>
+                <span class="text-xs text-gray-400 font-mono">{{ items[0]?.reagent_catalog?.formula ?? '' }}</span>
+                <Badge v-if="items[0]?.reagent_catalog?.is_controlled" variant="destructive" class="px-1.5 h-4.5 text-[10px]">管控品</Badge>
+                <Badge variant="info" class="px-1.5 h-4.5 text-[10px]">{{ items[0]?.reagent_catalog?.category }}</Badge>
               </div>
               <div class="flex items-center gap-3 text-xs text-gray-500 shrink-0">
                 <span>{{ items.length }} 瓶在库</span>
@@ -304,7 +350,10 @@ const getRemainingColor = (pct: number) => {
 
             <div v-if="isExpanded(String(catalogName))" class="divide-y divide-gray-100">
               <div v-for="item in items" :key="item.uuid" class="group flex items-center px-4 py-2.5 bg-white hover:bg-gray-50 gap-3 text-sm">
-                <span class="font-mono text-[11px] text-gray-400 w-20 shrink-0">#{{ item.uuid.substring(0,8).toUpperCase() }}</span>
+                <!-- 条码变成可点击按钮 -->
+                <button @click="openLifecycleDialog(item.uuid)" class="font-mono text-[11px] text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 w-24 shrink-0" title="查看生命周期档案">
+                  <FileText class="w-3 h-3"/> {{ item.uuid.substring(0,8).toUpperCase() }}
+                </button>
                 <!-- 试剂柜标签 -->
                 <span v-if="item.cabinet_id > 0" :class="['text-[10px] px-1.5 py-0.5 border rounded shrink-0 font-medium', isControlledCabinet(item) ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-600 border-blue-200']">
                   {{ getCabinetName(item) }}
@@ -314,20 +363,20 @@ const getRemainingColor = (pct: number) => {
                   <div class="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden shrink-0">
                     <div class="h-full rounded-full transition-all" :class="remainingPct(item) > 50 ? 'bg-green-500' : remainingPct(item) > 20 ? 'bg-yellow-500' : 'bg-red-500'" :style="`width: ${remainingPct(item)}%`"></div>
                   </div>
-                  <span class="text-xs text-gray-500 whitespace-nowrap">{{ item.remaining_volume }}/{{ item.capacity }} {{ item.reagent_catalog?.unit }}</span>
+                  <span class="text-xs text-gray-500 whitespace-nowrap">{{ formatRatio(item.remaining_volume, item.capacity, item.reagent_catalog?.unit, 'ml') }}</span>
                 </div>
                 <span class="text-xs text-gray-400 font-mono shrink-0 hidden xl:block">{{ item.batch_number }}</span>
                 <span class="flex items-center gap-1 text-xs shrink-0 w-24" :class="isNearExpiry(item) ? 'text-orange-600' : 'text-gray-400'">
                   <AlertTriangle v-if="isNearExpiry(item)" class="w-3 h-3" />
                   {{ formatDate(item.expiry_date) }}
                 </span>
-                <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity ml-auto pl-4 border-l border-gray-100 shrink-0">
-                  <button @click.stop="openConsumeDialog(item)" class="text-[11px] px-2 py-1 bg-blue-50 text-blue-600 rounded flex items-center gap-1 hover:bg-blue-100 transition-colors">
-                    <MinusCircle class="w-3 h-3" /> 使用
-                  </button>
-                  <button @click.stop="markAsEmpty(item)" class="text-[11px] px-2 py-1 bg-gray-50 text-gray-400 rounded flex items-center gap-1 hover:bg-red-50 hover:text-red-500 transition-colors">
-                    <Trash2 class="w-3 h-3" /> 用尽
-                  </button>
+                <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-200 ml-auto pl-4 border-l border-gray-100 shrink-0 scale-95 group-hover:scale-100">
+                  <Button @click.stop="openConsumeDialog(item)" variant="outline" size="sm" class="h-7 px-2 text-[11px] border-blue-100 text-blue-600 hover:bg-blue-50">
+                    <MinusCircle class="w-3.5 h-3.5 mr-1" /> 使用
+                  </Button>
+                  <Button @click.stop="markAsEmpty(item)" variant="ghost" size="sm" class="h-7 px-2 text-[11px] text-gray-400 hover:text-red-600 hover:bg-red-50">
+                    <Trash2 class="w-3.5 h-3.5 mr-1" /> 用尽
+                  </Button>
                 </div>
               </div>
             </div>
@@ -340,15 +389,15 @@ const getRemainingColor = (pct: number) => {
     <div v-show="viewMode === 'table'">
       <!-- 筛选条 -->
       <div class="flex flex-wrap gap-2 mb-3">
-        <div class="flex gap-1 rounded-lg bg-gray-100 p-1">
+        <div class="apple-segmented">
           <button v-for="s in statusOptions" :key="s" @click="setStatusFilter(s)"
-            :class="['px-3 py-1.5 text-xs font-medium rounded-md transition-all', statusFilter === s ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700']">
+            :class="['apple-segmented-btn', statusFilter === s ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']">
             {{ s }}
           </button>
         </div>
-        <div class="flex gap-1 rounded-lg bg-gray-100 p-1">
+        <div class="apple-segmented">
           <button v-for="c in cabinetOptions" :key="c" @click="setCabinetFilter(c)"
-            :class="['px-3 py-1.5 text-xs font-medium rounded-md transition-all', cabinetFilter === c ? 'bg-white text-amber-700 shadow-sm' : 'text-gray-500 hover:text-gray-700']">
+            :class="['apple-segmented-btn', cabinetFilter === c ? 'apple-segmented-btn-active text-amber-700' : 'apple-segmented-btn-idle']">
             {{ c === '全部' ? '全部柜' : c === '管控柜' ? '⚠️ 管控柜' : c }}
           </button>
         </div>
@@ -358,7 +407,7 @@ const getRemainingColor = (pct: number) => {
         <Loader2 class="h-8 w-8 animate-spin text-gray-400" />
       </div>
       <div v-else-if="filteredItems.length === 0" class="text-center text-gray-500 py-8">暂无匹配的试剂库存记录。</div>
-      <div v-else class="overflow-x-auto rounded-lg border border-gray-200">
+      <div v-else class="apple-table-wrap">
         <table class="w-full text-sm text-left">
           <thead class="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
             <tr>
@@ -376,17 +425,21 @@ const getRemainingColor = (pct: number) => {
           <tbody>
             <tr v-for="item in paginatedItems" :key="item.uuid" class="border-b border-gray-100 hover:bg-gray-50 group">
               <td class="px-4 py-3 font-medium text-gray-900">
-                {{ item.reagent_catalog?.name || '未知' }}
+                <button @click="openLifecycleDialog(item.uuid)" class="hover:text-blue-600 hover:underline text-left" title="查看全生命周期档案">
+                  {{ item.reagent_catalog?.name || '未知' }}
+                </button>
                 <span class="block text-xs text-gray-400 font-normal">CAS: {{ item.reagent_catalog?.cas_number }}</span>
               </td>
-              <td class="px-4 py-3 font-mono text-xs text-gray-400">
-                <span :title="item.uuid">{{ item.uuid.substring(0,8) }}…</span>
+              <td class="px-4 py-3 font-mono text-xs text-blue-600">
+                <button @click="openLifecycleDialog(item.uuid)" class="hover:underline flex items-center gap-1" title="查看生命周期档案">
+                  <FileText class="w-3 h-3" /> <span :title="item.uuid">{{ item.uuid.substring(0,8) }}…</span>
+                </button>
               </td>
               <td class="px-4 py-3">
                 <div class="min-w-[90px]">
                   <div class="flex items-center justify-between text-[10px] text-gray-500 mb-1">
-                    <span>{{ item.remaining_volume }}{{ item.reagent_catalog?.unit?.replace(/[0-9]/g, '') || 'ml' }}</span>
-                    <span>/ {{ item.capacity }}</span>
+                    <span>{{ formatAmount(item.remaining_volume, item.reagent_catalog?.unit, 'ml') }}</span>
+                    <span>/ {{ formatNumber(item.capacity) }}</span>
                   </div>
                   <div class="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                     <div :class="['h-full rounded-full transition-all', getRemainingColor(remainingPct(item))]" :style="{ width: remainingPct(item) + '%' }"></div>
@@ -404,19 +457,19 @@ const getRemainingColor = (pct: number) => {
                 {{ item.reagent_request?.requestor?.real_name || 'System' }}
               </td>
               <td class="px-4 py-3">
-                <span :class="['px-2 py-0.5 rounded-full text-xs font-medium', getStatusColor(item.status)]">{{ getStatusLabel(item.status) }}</span>
+                <Badge :variant="getStatusVariant(item.status)">{{ getStatusLabel(item.status) }}</Badge>
               </td>
               <td class="px-4 py-3">
-                <span :class="getExpiryInfo(item.expiry_date).class">{{ getExpiryInfo(item.expiry_date).text }}</span>
+                <span :class="['text-xs', getExpiryInfo(item.expiry_date).class]">{{ getExpiryInfo(item.expiry_date).text }}</span>
               </td>
               <td class="px-4 py-3">
-                <div class="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity" v-if="item.status === '在库'">
-                  <button @click="openConsumeDialog(item)" class="text-[11px] px-2 py-1 bg-blue-50 text-blue-600 rounded flex items-center gap-1 hover:bg-blue-100">
-                    <MinusCircle class="w-3 h-3" /> 使用
-                  </button>
-                  <button @click="markAsEmpty(item)" class="text-[11px] px-2 py-1 bg-gray-50 text-gray-400 rounded flex items-center gap-1 hover:bg-red-50 hover:text-red-500">
-                    <Trash2 class="w-3 h-3" /> 用尽
-                  </button>
+                <div class="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200" v-if="item.status === '在库'">
+                  <Button @click="openConsumeDialog(item)" variant="outline" size="sm" class="h-7 px-2 text-[11px] border-blue-100 text-blue-600 hover:bg-blue-50">
+                    使用
+                  </Button>
+                  <Button @click="markAsEmpty(item)" variant="ghost" size="sm" class="h-7 px-2 text-[11px] text-gray-400 hover:text-red-500 hover:bg-red-50">
+                    用尽
+                  </Button>
                 </div>
               </td>
             </tr>
@@ -434,36 +487,48 @@ const getRemainingColor = (pct: number) => {
       </div>
     </div>
 
-    <!-- ================================ 领用弹窗 ================================ -->
-    <div v-if="consumeDialog.isOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" @click.self="consumeDialog.isOpen=false">
-      <div class="bg-white rounded-2xl w-full max-w-sm shadow-xl p-6 space-y-5">
+    <!-- ================================ 领用弹窗 (Standardized) ================================ -->
+    <Dialog :open="consumeDialog.isOpen" size="sm" @close="consumeDialog.isOpen = false">
+      <div class="p-6 space-y-6">
         <div>
-          <h3 class="text-lg font-bold text-gray-900">登记试剂消耗</h3>
+          <h3 class="text-xl font-bold text-gray-900 tracking-tight">登记试剂消耗</h3>
           <p class="text-sm text-gray-500 mt-1" v-if="consumeDialog.item">
-            #{{ consumeDialog.item.uuid.substring(0,8).toUpperCase() }} — {{ consumeDialog.item.reagent_catalog?.name }}
+            条码: <span class="font-mono text-blue-600 font-medium">#{{ consumeDialog.item.uuid.substring(0,8).toUpperCase() }}</span> — {{ consumeDialog.item.reagent_catalog?.name }}
           </p>
         </div>
         <div class="space-y-4">
-          <div class="space-y-1.5">
-            <label class="text-sm font-semibold text-gray-700">本次耗用量</label>
+          <div class="space-y-2">
+            <label class="text-sm font-bold text-gray-700">本次耗用量</label>
             <div class="relative">
               <input type="number" v-model="consumeDialog.volume" min="1" :max="consumeDialog.item?.remaining_volume"
-                class="w-full h-10 px-3 bg-gray-50 border border-gray-200 rounded-lg pr-14 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" />
-              <span class="absolute right-3 top-2.5 text-sm text-gray-400">{{ consumeDialog.item?.reagent_catalog?.unit?.replace(/[0-9]/g, '') || 'ml' }}</span>
+                class="w-full h-11 px-4 bg-gray-50 border border-gray-200 rounded-xl pr-16 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all" />
+              <span class="absolute right-4 top-3 text-sm font-medium text-gray-400">{{ normalizeUnit(consumeDialog.item?.reagent_catalog?.unit, 'ml') }}</span>
             </div>
-            <p class="text-[11px] text-gray-400 text-right">当前余量: {{ consumeDialog.item?.remaining_volume }}</p>
+            <div class="flex justify-between items-center px-1">
+              <span class="text-[11px] text-gray-400">当前余量: {{ formatAmount(consumeDialog.item?.remaining_volume, consumeDialog.item?.reagent_catalog?.unit, 'ml') }}</span>
+              <button @click="consumeDialog.volume = consumeDialog.item?.remaining_volume || 0" class="text-[11px] text-blue-600 hover:underline">全部用尽</button>
+            </div>
           </div>
-          <div class="space-y-1.5">
-            <label class="text-sm font-semibold text-gray-700">消耗原因/用途 (选填)</label>
-            <textarea v-model="consumeDialog.remarks" rows="2" placeholder="例如：日常实验配置溶液…"
-              class="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm resize-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"></textarea>
+          <div class="space-y-2">
+            <label class="text-sm font-bold text-gray-700">消耗原因/用途 (选填)</label>
+            <textarea v-model="consumeDialog.remarks" rows="2" placeholder="例如：日常实验配置溶液..."
+              class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl text-sm resize-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all"></textarea>
           </div>
-        </div>
-        <div class="flex gap-3">
-          <button @click="consumeDialog.isOpen=false" class="flex-1 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors">取消</button>
-          <button @click="submitConsume" class="flex-1 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 shadow-sm shadow-blue-200 rounded-xl transition-colors">确认扣减</button>
         </div>
       </div>
-    </div>
+      <template #footer>
+          <Button @click="consumeDialog.isOpen = false" variant="secondary">取消</Button>
+          <Button @click="submitConsume" variant="primary">确认扣减</Button>
+      </template>
+    </Dialog>
+
+    <!-- ================================ 生命周期弹窗 ================================ -->
+    <ItemLifecycleDialog 
+      :is-open="lifecycleDialog.isOpen" 
+      :item-uuid="lifecycleDialog.itemUuid"
+      @close="lifecycleDialog.isOpen = false"
+      @refresh-needed="fetchAll"
+    />
+
   </div>
 </template>

@@ -110,21 +110,27 @@ onMounted(() => {
 
 const roleBadgeClass = (role: string) => {
     switch(role) {
+        case 'admin': return 'bg-slate-800 text-white'
         case 'team_leader': return 'bg-purple-100 text-purple-700'
         case 'director': return 'bg-red-100 text-red-700'
+        case 'procurement': return 'bg-amber-100 text-amber-700'
         case 'member': return 'bg-gray-100 text-gray-700'
-        default: return 'bg-blue-100 text-blue-700' // Specialists
+        case 'researcher': return 'bg-blue-100 text-blue-700'
+        default: return 'bg-gray-100 text-gray-700' 
     }
 }
 
 const roleName = (role: string) => {
     const map: Record<string, string> = {
+        'admin': '系统管理员',
         'team_leader': '团队长',
         'member': '成员',
         'director': '负责人',
-        'procurement_specialist': '采购专员',
+        'procurement': '采购人员',
+        'procurement_specialist': '采购人员',
         'measurement_specialist': '计量专员',
-        'safety_specialist': '安全专员'
+        'safety_specialist': '安全专员',
+        'researcher': '研发人员'
     }
     return map[role] || role
 }

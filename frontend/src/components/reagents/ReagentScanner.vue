@@ -16,8 +16,6 @@ const locationInput = ref('')
 const cabinetInput = ref<number>(0) // 选中的柜 ID
 const cabinets = ref<Cabinet[]>([]) // 从 API 加载
 
-const quickLocations = ['E309', 'E307', 'F103', 'F309']
-
 // Toast
 const showToast = ref(false)
 const toastMessage = ref('')
@@ -34,6 +32,13 @@ const loadCabinets = async (isControlled: boolean) => {
     const cabinetType = isControlled ? '易制毒制爆试剂柜' : '普通试剂柜'
     const res = await axios.get(`/api/reagents/cabinets?type=${encodeURIComponent(cabinetType)}`)
     cabinets.value = res.data ?? []
+    if (cabinets.value.length > 0 && cabinetInput.value === 0) {
+      const firstCabinet = cabinets.value[0]
+      if (firstCabinet) {
+        cabinetInput.value = firstCabinet.id
+        locationInput.value = firstCabinet.location
+      }
+    }
   } catch { cabinets.value = [] }
 }
 
@@ -72,16 +77,23 @@ const fetchItem = async (uuid: string) => {
 const updateStatus = async (newStatus: string) => {
   if (!currentItem.value) return
   try {
-    const payload: any = { status: newStatus }
     if (newStatus === '在库') {
-       if (!locationInput.value) {
-         toast("请指定一个入库存放位置。", 'error')
-         return
-       }
-       payload.location = locationInput.value
-       if (cabinetInput.value > 0) payload.cabinet_id = cabinetInput.value
+      const selectedCab = cabinets.value.find(c => c.id === cabinetInput.value)
+      if (!selectedCab) {
+        toast("请先选择试剂柜。", 'error')
+        return
+      }
+      await axios.post(`/api/reagents/items/${currentItem.value.uuid}/check-in`, {
+        lab_room: selectedCab.location,
+        cabinet_id: cabinetInput.value > 0 ? cabinetInput.value : 0,
+      })
+    } else if (newStatus === '已耗尽') {
+      await axios.post(`/api/reagents/items/${currentItem.value.uuid}/deplete`, {
+        remarks: '扫码页执行耗尽核销'
+      })
+    } else {
+      await axios.put(`/api/reagents/items/${currentItem.value.uuid}/status`, { status: newStatus })
     }
-    await axios.put(`/api/reagents/items/${currentItem.value.uuid}/status`, payload)
     toast(`该试剂已被标记为 ${getStatusLabel(newStatus)}。`)
     fetchItem(currentItem.value.uuid)
   } catch (error) {
@@ -147,7 +159,7 @@ const updateStatus = async (newStatus: string) => {
           <div class="pt-4 border-t">
               <div v-if="currentItem.status === '已到货'" class="space-y-3">
                   <p class="text-sm font-medium text-blue-800 bg-blue-50 p-3 rounded-lg">
-                    💡 此试剂已从供应商到货，位于分拣区。请选择存放的试剂柜和实验室位置并确认入库。
+                    💡 此试剂已从供应商到货，位于暂存区。请选择存放的试剂柜和实验室位置并确认入库。
                   </p>
                   <!-- 试剂柜选择 -->
                   <div>
@@ -168,25 +180,14 @@ const updateStatus = async (newStatus: string) => {
                       </Button>
                     </div>
                   </div>
-                  <!-- 位置选择 -->
+                  <!-- 实验室选择（由试剂柜联动） -->
                   <div>
                     <p class="text-xs text-gray-500 mb-1.5 font-medium flex items-center gap-1.5">
-                      选择库位（房间号）
+                      实验室（由试剂柜自动带出）
                       <span v-if="cabinetInput > 0" class="text-[10px] bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded border border-blue-100 animate-in fade-in slide-in-from-left-1">已随柜联动同步</span>
                     </p>
-                    <div class="flex flex-wrap gap-2">
-                      <Button 
-                          v-for="loc in quickLocations" 
-                          :key="loc"
-                          size="sm"
-                          :variant="locationInput === loc ? 'default' : 'outline'"
-                          @click="locationInput = loc"
-                      >
-                          📍 {{ loc }}
-                      </Button>
-                    </div>
+                    <Input v-model="locationInput" disabled />
                   </div>
-                  <Input v-model="locationInput" placeholder="或手动输入库位..." class="mt-1" />
                   <Button class="w-full mt-2" @click="updateStatus('在库')">
                       <PackageCheck class="mr-2 h-4 w-4" />
                       确认入库：{{ cabinets.find(c => c.id === cabinetInput)?.name || '未选柜' }} · {{ locationInput || '...' }}
@@ -221,10 +222,10 @@ const updateStatus = async (newStatus: string) => {
       leave-from-class="translate-y-0 opacity-100"
       leave-to-class="translate-y-4 opacity-0"
     >
-      <div v-if="showToast" class="fixed bottom-6 right-6 z-50 max-w-sm">
+      <div v-if="showToast" class="apple-toast-wrap">
         <div :class="[
-          'px-4 py-3 rounded-lg shadow-lg border text-sm font-medium flex items-center gap-2',
-          toastType === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'
+          'apple-toast',
+          toastType === 'success' ? 'apple-toast-success' : 'apple-toast-error'
         ]">
           <span>{{ toastMessage }}</span>
         </div>

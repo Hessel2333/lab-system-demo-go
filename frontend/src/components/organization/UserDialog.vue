@@ -22,10 +22,12 @@ const formData = ref({
 })
 
 const roles = [
-    { value: 'member', label: '团队成员' },
-    { value: 'team_leader', label: '团队长' },
+    { value: 'admin', label: '系统管理员' },
     { value: 'director', label: '部门负责人' },
-    { value: 'procurement_specialist', label: '采购专员' },
+    { value: 'team_leader', label: '团队长' },
+    { value: 'member', label: '团队成员' },
+    { value: 'researcher', label: '研发人员' },
+    { value: 'procurement', label: '采购人员' },
     { value: 'measurement_specialist', label: '计量专员' },
     { value: 'safety_specialist', label: '安全专员' },
 ]

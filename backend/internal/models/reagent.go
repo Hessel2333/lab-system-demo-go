@@ -76,6 +76,8 @@ type ReagentItem struct {
 	BatchNumber string    `json:"batch_number"`
 	ExpiryDate  time.Time `json:"expiry_date"`
 
+	Logs []ReagentLog `gorm:"foreignKey:ReagentItemID;references:UUID" json:"logs"`
+
 	CreatedAt time.Time      `json:"created_at"` // Arrival time
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
@@ -142,6 +144,7 @@ type ProcurementBatchItem struct {
 	ID      uint             `gorm:"primaryKey" json:"id"`
 	BatchID uint             `json:"batch_id"`
 	Batch   ProcurementBatch `gorm:"foreignKey:BatchID" json:"batch"`
+	RowHash string           `gorm:"index;size:128" json:"row_hash"` // 行级去重键
 
 	// 原始 Excel 数据
 	ReagentName      string  `json:"reagent_name"` // Excel 中的商品名称

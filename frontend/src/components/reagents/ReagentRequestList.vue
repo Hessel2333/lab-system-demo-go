@@ -1,23 +1,41 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { Loader2, Search, Package } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
+import Badge from '@/components/ui/Badge.vue'
+import Dialog from '@/components/ui/Dialog.vue'
 import Card from '@/components/ui/Card.vue'
 import Input from '@/components/ui/Input.vue'
 import axios from 'axios'
 import RequestProgressDialog from './RequestProgressDialog.vue'
+import LedgerTable from './LedgerTable.vue'
+
+const props = defineProps({
+    role: { type: String, default: 'researcher' }
+})
 
 const requests = ref<any[]>([])
 const isLoading = ref(true)
 const isProgressOpen = ref(false)
 const selectedRequest = ref<any>(null)
+const arrivalCounts = ref<Record<number, number>>({}) // request_id -> count of '已到货' items
 const searchQuery = ref('')
-const statusFilter = ref('全部')
+const statusFilter = ref(props.role === 'procurement' ? '待采购' : '全部')
 
-const statusOptions = ['全部', '待审批', '待采购', '已接单', '已入库', '已驳回']
+const roleStatusOptions = computed(() => {
+    if (props.role === 'procurement') return ['全部', '待采购', '已接单', '已驳回']
+    if (props.role === 'leader') return ['全部', '待审批', '待采购', '已驳回']
+    return ['全部', '待审批', '待采购', '已接单', '已驳回']
+})
 
-const props = defineProps({
-    role: { type: String, default: 'researcher' }
+watch(() => props.role, (role) => {
+    statusFilter.value = role === 'procurement' ? '待采购' : '全部'
+})
+
+watch(roleStatusOptions, (options) => {
+    if (!options.includes(statusFilter.value)) {
+        statusFilter.value = options[0] || '全部'
+    }
 })
 
 const fetchRequests = async () => {
@@ -32,6 +50,24 @@ const fetchRequests = async () => {
     }
     // 采购角色批量查询库存状态
     if (props.role === 'procurement') fetchStockForRequests()
+    // 研发角色查询是否有待领取的实物
+    if (props.role === 'researcher') fetchArrivalCounts()
+}
+
+const fetchArrivalCounts = async () => {
+    try {
+        // 查询所有已到货的试剂瓶
+        const res = await axios.get('/api/reagents/items?status=已到货')
+        const counts: Record<number, number> = {}
+        res.data.forEach((item: any) => {
+            if (item.reagent_request_id) {
+                counts[item.reagent_request_id] = (counts[item.reagent_request_id] || 0) + 1
+            }
+        })
+        arrivalCounts.value = counts
+    } catch (e) {
+        console.error("Failed to fetch arrival counts", e)
+    }
 }
 
 // 库存状态缓存（按 catalog_id 缓存避免重复查询）
@@ -134,16 +170,26 @@ const viewProgress = (req: any) => {
 
 defineExpose({ fetchRequests })
 
-const getStatusColor = (status: string) => {
+const getStatusVariant = (status: string): any => {
     const map: Record<string, string> = {
-        '待审批': 'bg-orange-100 text-orange-800',
-        '待采购': 'bg-blue-100 text-blue-800',
-        '已接单': 'bg-indigo-100 text-indigo-800',
-        '已入库': 'bg-green-100 text-green-800',
-        '已驳回': 'bg-red-100 text-red-800',
+        '待审批': 'warning',
+        '待采购': 'info',
+        '已接单': 'primary',
+        '已入库': 'success',
+        '已驳回': 'destructive',
     }
-    return map[status] || 'bg-gray-100 text-gray-800'
+    return map[status] || 'default'
 }
+
+const ledgerColumns = [
+  { key: 'id', label: '单号' },
+  { key: 'requestor', label: '申购人' },
+  { key: 'reagent', label: '试剂名称' },
+  { key: 'quantity', label: '数量' },
+  { key: 'status', label: '状态' },
+  { key: 'date', label: '申请日期' },
+  { key: 'actions', label: '操作' },
+]
 </script>
 
 <template>
@@ -155,16 +201,16 @@ const getStatusColor = (status: string) => {
               <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
               <Input v-model="searchQuery" class="pl-9" placeholder="搜索单号、试剂名称、CAS号..." />
           </div>
-          <div class="flex gap-1 rounded-lg bg-gray-100 p-1">
+          <div class="apple-segmented">
               <button
-                v-for="s in statusOptions"
+                v-for="s in roleStatusOptions"
                 :key="s"
                 @click="statusFilter = s"
                 :class="[
-                  'px-3 py-1.5 text-xs font-medium rounded-md transition-all',
+                  'apple-segmented-btn',
                   statusFilter === s
-                    ? 'bg-white text-blue-700 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'apple-segmented-btn-active'
+                    : 'apple-segmented-btn-idle'
                 ]"
               >
                 {{ s }}
@@ -178,20 +224,7 @@ const getStatusColor = (status: string) => {
       <div v-else-if="filteredRequests.length === 0" class="text-center text-gray-500 py-8">
         暂无匹配的申购记录。
       </div>
-      <div v-else class="overflow-x-auto rounded-lg border">
-        <table class="w-full text-sm text-left">
-          <thead class="text-xs text-gray-700 uppercase bg-gray-50">
-            <tr>
-              <th scope="col" class="px-6 py-3">单号</th>
-              <th scope="col" class="px-6 py-3">申购人</th>
-              <th scope="col" class="px-6 py-3">试剂名称</th>
-              <th scope="col" class="px-6 py-3">数量</th>
-              <th scope="col" class="px-6 py-3">状态</th>
-              <th scope="col" class="px-6 py-3">申请日期</th>
-              <th scope="col" class="px-6 py-3">操作</th>
-            </tr>
-          </thead>
-          <tbody>
+      <LedgerTable v-else :columns="ledgerColumns">
             <template v-for="req in filteredRequests" :key="req.id">
               <!-- 主行 -->
               <tr class="bg-white hover:bg-gray-50"
@@ -221,9 +254,9 @@ const getStatusColor = (status: string) => {
                 </td>
                 <td class="px-6 py-4">{{ req.quantity }} 瓶</td>
                 <td class="px-6 py-4">
-                    <span :class="['px-2 py-1 rounded-full text-xs font-medium', getStatusColor(req.status)]">
+                    <Badge :variant="getStatusVariant(req.status)">
                         {{ req.status }}
-                    </span>
+                    </Badge>
                 </td>
                 <td class="px-6 py-4 text-gray-500">
                     {{ new Date(req.created_at).toLocaleDateString('zh-CN') }}
@@ -234,19 +267,19 @@ const getStatusColor = (status: string) => {
                           variant="outline"
                           size="sm"
                           @click="viewProgress(req)"
-                          class="text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-200"
+                          class="h-7 px-3 text-[11px] border-blue-100 text-blue-600 hover:bg-blue-50"
                         >
-                            查看进度
+                            进度详情
                         </Button>
 
                         <!-- Leader 审批 -->
                         <template v-if="req.status === '待审批' && role === 'leader'">
-                            <Button size="sm" class="bg-indigo-600 hover:bg-indigo-700 text-white" 
+                            <Button size="sm" variant="primary"
                                 :disabled="leaderApprovingId === req.id"
                                 @click="leaderApprove(req.id, true)">
                                 同意采购
                             </Button>
-                            <Button size="sm" variant="outline" class="text-red-600 border-red-200 hover:bg-red-50"
+                            <Button size="sm" variant="destructive"
                                 :disabled="leaderApprovingId === req.id"
                                 @click="leaderApprove(req.id, false)">
                                 驳回
@@ -257,10 +290,11 @@ const getStatusColor = (status: string) => {
                         <Button
                           v-else-if="req.status === '待采购' && role === 'procurement'"
                           size="sm"
-                          class="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                          variant="primary"
+                          class="h-7 px-3 text-[11px]"
                           @click="openOrderDialog(req)"
                         >
-                            标记为已接单
+                            标记已接单
                         </Button>
 
                         <span v-else-if="req.status === '待审批'" class="text-xs text-orange-500">
@@ -269,12 +303,13 @@ const getStatusColor = (status: string) => {
                         <span v-else-if="req.status === '待采购'" class="text-xs text-blue-500">
                             待采购员统一汇总下单
                         </span>
-                        <span v-else-if="req.status === '已接单'" class="text-xs text-indigo-600 font-medium">
-                            📦 已纳入采购周期，等待到货
-                        </span>
-                        <span v-else-if="req.status === '已入库'" class="text-xs text-green-600 font-medium">
-                            ✅ 已到货入库
-                        </span>
+                        <div v-else-if="req.status === '已接单'" class="flex flex-col">
+                            <span class="text-xs text-indigo-600 font-medium">📦 采购员已接单下单</span>
+                            <span v-if="arrivalCounts[req.id]" class="text-[10px] text-amber-600 mt-1 font-bold animate-pulse">
+                                📢 实物已到货确认，请前往「到货台账」执行入库
+                            </span>
+                            <span v-else class="text-[10px] text-gray-400 mt-1">等待物流到货确认</span>
+                        </div>
                         <span v-else-if="req.status === '已驳回'" class="text-xs text-red-600">
                             已驳回
                         </span>
@@ -284,7 +319,7 @@ const getStatusColor = (status: string) => {
 
               <!-- 展开行：AI 审批决策面板（采购员 + 待采购 + 有建议数据时展示） -->
               <tr v-if="req.status === '待采购' && role === 'procurement' && stockMap[req.reagent_catalog_id]" class="border-b-2 border-indigo-100 bg-indigo-50/40">
-                <td colspan="7" class="px-6 py-2">
+                <td :colspan="ledgerColumns.length" class="px-6 py-2">
                     <div class="flex items-center gap-4 whitespace-nowrap overflow-hidden">
                         <div class="flex items-center gap-1.5 shrink-0 text-indigo-600 font-semibold text-xs text-nowrap">
                             <span>🤖 AI 建议:</span>
@@ -317,9 +352,7 @@ const getStatusColor = (status: string) => {
               </tr>
 
             </template>
-          </tbody>
-        </table>
-      </div>
+      </LedgerTable>
     </div>
 
     <!-- Progress Timeline Dialog -->
@@ -330,56 +363,44 @@ const getStatusColor = (status: string) => {
         @refresh="fetchRequests"
     />
 
-    <!-- BPM-A: 审批下单确认弹窗 -->
-    <Transition
-      enter-active-class="transition ease-out duration-200"
-      enter-from-class="opacity-0"
-      enter-to-class="opacity-100"
-      leave-active-class="transition ease-in duration-150"
-      leave-from-class="opacity-100"
-      leave-to-class="opacity-0"
-    >
-      <div v-if="orderDialogOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-          <!-- Header -->
-          <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
-            <h3 class="text-white font-semibold text-base">标记已下单采购</h3>
-            <p class="text-blue-100 text-xs mt-0.5">{{ orderDialogReqName }}</p>
+    <!-- 审批下单确认弹窗 -->
+    <Dialog :open="orderDialogOpen" size="sm" @close="orderDialogOpen = false">
+      <template #header>
+          <!-- Using inline header content as Title prop for now -->
+      </template>
+      <div class="p-6 space-y-6">
+          <div class="bg-blue-600 -mx-6 -mt-6 px-6 py-6 text-white">
+            <h3 class="font-bold text-xl tracking-tight">确认标记已接单</h3>
+            <p class="text-blue-100 text-sm mt-1 opacity-90">{{ orderDialogReqName }}</p>
           </div>
-          <!-- Body -->
-          <div class="px-6 py-5 space-y-4">
-            <div>
-              <label class="block text-xs font-medium text-gray-700 mb-1.5">外部平台订单号 <span class="text-gray-400">(选填)</span></label>
-              <input
+          
+          <div class="space-y-5 pt-2">
+            <div class="space-y-2">
+              <label class="block text-sm font-bold text-gray-700">外部平台订单号 <span class="text-gray-400 font-normal">(选填)</span></label>
+              <Input
                 v-model="orderReference"
-                type="text"
                 placeholder="如：易派客订单号 EP20260201..."
-                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
               />
-              <p class="text-[10px] text-gray-400 mt-1">可在外部平台下单后回填，也可以稍后补录</p>
+              <p class="text-[11px] text-gray-400">可在外部平台下单后回填，系统将自动同步物流</p>
             </div>
-            <div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              <p class="text-xs text-amber-800">⚡ 确认后，此申购单状态将变更为「已接单」，BPM-A 需求闭环。</p>
+            <div class="bg-amber-50 border border-amber-100 rounded-xl p-4 flex gap-3 items-start">
+               <AlertTriangle class="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+               <p class="text-xs text-amber-800 leading-relaxed font-medium">确认后，此申购单状态将变更为「已接单」，后续进入到货确认与入库流转。</p>
             </div>
           </div>
-          <!-- Footer -->
-          <div class="px-6 py-3 bg-gray-50 flex justify-end gap-2 border-t">
-            <Button size="sm" class="bg-gray-200 hover:bg-gray-300 text-gray-700" @click="orderDialogOpen = false">
-              取消
-            </Button>
-            <Button
-              size="sm"
-              class="bg-blue-600 hover:bg-blue-700 text-white"
-              :disabled="orderSubmitting"
-              @click="confirmApproveAndOrder"
-            >
-              <Loader2 v-if="orderSubmitting" class="w-3.5 h-3.5 animate-spin mr-1" />
-              确认标记已接单
-            </Button>
-          </div>
-        </div>
       </div>
-    </Transition>
+      <template #footer>
+          <Button variant="secondary" @click="orderDialogOpen = false">取消</Button>
+          <Button
+            variant="primary"
+            :disabled="orderSubmitting"
+            @click="confirmApproveAndOrder"
+          >
+            <Loader2 v-if="orderSubmitting" class="w-4 h-4 animate-spin mr-2" />
+            确认接单
+          </Button>
+      </template>
+    </Dialog>
 
     <!-- Toast -->
     <Transition
@@ -390,10 +411,10 @@ const getStatusColor = (status: string) => {
       leave-from-class="translate-y-0 opacity-100"
       leave-to-class="translate-y-4 opacity-0"
     >
-      <div v-if="showToast" class="fixed bottom-6 right-6 z-50 max-w-sm">
+      <div v-if="showToast" class="apple-toast-wrap">
         <div :class="[
-          'px-4 py-3 rounded-lg shadow-lg border text-sm font-medium flex items-center gap-2',
-          toastType === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'
+          'apple-toast',
+          toastType === 'success' ? 'apple-toast-success' : 'apple-toast-error'
         ]">
           <span>{{ toastMessage }}</span>
         </div>

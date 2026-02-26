@@ -111,7 +111,7 @@ func DeleteReagentCabinet(c *gin.Context) {
 
 	// 检查是否有试剂实体仍在使用此柜
 	var count int64
-	database.DB.Model(&models.ReagentItem{}).Where("cabinet_id = ? AND status = ?", id, "在库").Count(&count)
+	database.DB.Model(&models.ReagentItem{}).Where("cabinet_id = ? AND reagent_items.status = ?", id, "在库").Count(&count)
 	if count > 0 {
 		c.JSON(http.StatusConflict, gin.H{"error": fmt.Sprintf("该试剂柜当前仍有 %d 瓶在库试剂，无法删除", count)})
 		return

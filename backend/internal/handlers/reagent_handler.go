@@ -15,7 +15,117 @@ import (
 	"lab-system-backend/internal/models"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
+
+var reagentStateTransitions = map[string]map[string]bool{
+	"已到货": {
+		"在库": true,
+	},
+	"在库": {
+		"已耗尽": true,
+	},
+	"已耗尽": {},
+}
+
+func isValidItemTransition(from, to string) bool {
+	if from == to {
+		return true
+	}
+	next, ok := reagentStateTransitions[from]
+	if !ok {
+		return false
+	}
+	return next[to]
+}
+
+func getUserIDOrDefault(c *gin.Context, fallback int) uint {
+	raw := strings.TrimSpace(c.GetHeader("X-User-ID"))
+	if raw == "" {
+		return uint(fallback)
+	}
+	id, err := strconv.Atoi(raw)
+	if err != nil || id <= 0 {
+		return uint(fallback)
+	}
+	return uint(id)
+}
+
+func procurementItemFingerprint(item models.ProcurementBatchItem) string {
+	if rowHash := strings.TrimSpace(item.RowHash); rowHash != "" {
+		return strings.ToLower(rowHash)
+	}
+	return strings.Join([]string{
+		strings.ToLower(strings.TrimSpace(item.ReagentName)),
+		strings.ToLower(strings.TrimSpace(item.CASNumber)),
+		fmt.Sprintf("%d", item.Quantity),
+		strings.ToLower(strings.TrimSpace(item.Unit)),
+		fmt.Sprintf("%.4f", item.UnitPrice),
+		strings.ToLower(strings.TrimSpace(item.Supplier)),
+		strings.ToLower(strings.TrimSpace(item.MaterialCategory)),
+		strings.ToLower(strings.TrimSpace(item.ProductCategory)),
+	}, "|")
+}
+
+type importDedupStats struct {
+	TotalItems         int      `json:"total_items"`
+	CreatedCount       int      `json:"created_count"`
+	SkippedCount       int      `json:"skipped_count"`
+	DuplicateInFile    int      `json:"duplicate_in_file"`
+	DuplicateInSystem  int      `json:"duplicate_in_system"`
+	DuplicateNameHints []string `json:"duplicate_name_hints"`
+}
+
+func dedupeProcurementItems(orderNumber string, items []models.ProcurementBatchItem) ([]models.ProcurementBatchItem, importDedupStats) {
+	stats := importDedupStats{
+		TotalItems: len(items),
+	}
+	orderNumber = strings.TrimSpace(orderNumber)
+
+	existingFP := map[string]bool{}
+	if orderNumber != "" {
+		var importedItems []models.ProcurementBatchItem
+		database.DB.
+			Joins("JOIN procurement_batches pb ON pb.id = procurement_batch_items.batch_id").
+			Where("pb.order_number = ?", orderNumber).
+			Find(&importedItems)
+		for _, it := range importedItems {
+			fp := strings.TrimSpace(it.RowHash)
+			if fp == "" {
+				fp = procurementItemFingerprint(it)
+			}
+			existingFP[fp] = true
+		}
+	}
+
+	localFP := map[string]bool{}
+	dupNameSet := map[string]bool{}
+	newItems := make([]models.ProcurementBatchItem, 0, len(items))
+	for _, item := range items {
+		fp := procurementItemFingerprint(item)
+		if existingFP[fp] {
+			stats.DuplicateInSystem++
+			stats.SkippedCount++
+			name := strings.TrimSpace(item.ReagentName)
+			if name != "" && len(stats.DuplicateNameHints) < 8 && !dupNameSet[name] {
+				stats.DuplicateNameHints = append(stats.DuplicateNameHints, name)
+				dupNameSet[name] = true
+			}
+			continue
+		}
+		if localFP[fp] {
+			stats.DuplicateInFile++
+			stats.SkippedCount++
+			continue
+		}
+		localFP[fp] = true
+		item.RowHash = fp
+		newItems = append(newItems, item)
+	}
+
+	stats.CreatedCount = len(newItems)
+	return newItems, stats
+}
 
 // --- Reagent Catalog ---
 
@@ -47,10 +157,32 @@ func GetReagentDashboardStats(c *gin.Context) {
 	var inStorageItems int64
 	var pendingRequests int64
 	var lowStockAlerts int64
+	var pendingCheckInItems int64
+	var pendingReceiveLines int64
+	var controlledInStorage int64
+	var nearExpiry30Days int64
+	var activeCatalogs int64
+	var consumedVolume7d float64
 
 	database.DB.Model(&models.ReagentItem{}).Where("status != ?", "已耗尽").Count(&totalItems)
-	database.DB.Model(&models.ReagentItem{}).Where("status = ?", "在库").Count(&inStorageItems)
-	database.DB.Model(&models.ReagentRequest{}).Where("status = ?", "待处理").Count(&pendingRequests)
+	database.DB.Model(&models.ReagentItem{}).Where("reagent_items.status = ?", "在库").Count(&inStorageItems)
+	database.DB.Model(&models.ReagentRequest{}).Where("status IN ?", []string{"待审批", "待采购"}).Count(&pendingRequests)
+	database.DB.Model(&models.ReagentItem{}).Where("status = ?", "已到货").Count(&pendingCheckInItems)
+	database.DB.Model(&models.ProcurementBatchItem{}).Where("receive_status != ?", "已收货").Count(&pendingReceiveLines)
+	database.DB.Model(&models.ReagentItem{}).
+		Joins("JOIN reagent_catalogs c ON c.id = reagent_items.reagent_catalog_id").
+		Where("reagent_items.status = ? AND c.is_controlled = ?", "在库", true).
+		Count(&controlledInStorage)
+	database.DB.Model(&models.ReagentItem{}).
+		Where("status = ? AND expiry_date >= date('now') AND expiry_date <= date('now', '+30 day')", "在库").
+		Count(&nearExpiry30Days)
+	database.DB.Model(&models.ReagentItem{}).
+		Where("status != ?", "已耗尽").
+		Distinct("reagent_catalog_id").
+		Count(&activeCatalogs)
+	database.DB.Model(&models.ReagentLog{}).
+		Where("action IN ? AND created_at >= date('now', '-7 days')", []string{"领用消耗", "空瓶核销"}).
+		Select("COALESCE(SUM(quantity), 0)").Scan(&consumedVolume7d)
 
 	// Low Stock Alert (Checking catalogs against active items count)
 	// For simplicity, count how many catalogs have fewer active items than their threshold
@@ -77,7 +209,7 @@ func GetReagentDashboardStats(c *gin.Context) {
 	// Get Recent Activity Logs (last 5)
 	var recentLogs []models.ReagentLog
 	database.DB.Preload("User").Preload("ReagentItem.ReagentCatalog").
-		Order("created_at desc").Limit(5).Find(&recentLogs)
+		Order("reagent_logs.created_at desc").Limit(5).Find(&recentLogs)
 
 	// categoryDistribution for charts
 	type CategoryStat struct {
@@ -114,6 +246,12 @@ func GetReagentDashboardStats(c *gin.Context) {
 		"in_storage_items":      inStorageItems,
 		"pending_requests":      pendingRequests,
 		"low_stock_alerts":      lowStockAlerts,
+		"pending_checkin_items": pendingCheckInItems,
+		"pending_receive_lines": pendingReceiveLines,
+		"controlled_in_storage": controlledInStorage,
+		"near_expiry_30d":       nearExpiry30Days,
+		"active_catalogs":       activeCatalogs,
+		"consumed_volume_7d":    consumedVolume7d,
 		"recent_logs":           recentLogs,
 		"alerts":                stocks,
 		"category_distribution": catStats,
@@ -211,7 +349,7 @@ func StockCheck(c *gin.Context) {
 	// 在库数量
 	var inStock int64
 	database.DB.Model(&models.ReagentItem{}).
-		Where("reagent_catalog_id = ? AND status = ?", catalog.ID, "在库").
+		Where("reagent_catalog_id = ? AND reagent_items.status = ?", catalog.ID, "在库").
 		Count(&inStock)
 
 	// 待到货数量（已批准或采购中的申购单的总瓶数）
@@ -223,7 +361,7 @@ func StockCheck(c *gin.Context) {
 	// 待审申购数量
 	var pendingRequests int64
 	database.DB.Model(&models.ReagentRequest{}).
-		Where("reagent_catalog_id = ? AND status = ?", catalog.ID, "待处理").
+		Where("reagent_catalog_id = ? AND reagent_requests.status = ?", catalog.ID, "待处理").
 		Count(&pendingRequests)
 
 	// 最近消耗时间
@@ -451,14 +589,21 @@ func GetReagentItems(c *gin.Context) {
 	var items []models.ReagentItem
 	tx := database.DB.Preload("ReagentCatalog").Preload("Cabinet").Preload("ReagentRequest").Preload("ReagentRequest.Requestor")
 
+	// 如果需要按申购人过滤，利用 GORM 关联进行 Join
+	requestorID := c.Query("requestor_id")
+	if requestorID != "" {
+		tx = tx.Joins("JOIN reagent_requests rr ON rr.id = reagent_items.reagent_request_id").
+			Where("rr.requestor_id = ?", requestorID)
+	}
+
 	// Optional Query Params
 	if status := c.Query("status"); status != "" {
-		tx = tx.Where("status = ?", status)
+		tx = tx.Where("reagent_items.status = ?", status)
 	}
 	if requestID := c.Query("request_id"); requestID != "" {
-		tx = tx.Where("reagent_request_id = ?", requestID)
+		tx = tx.Where("reagent_items.reagent_request_id = ?", requestID)
 	}
-	if err := tx.Order("created_at DESC").Find(&items).Error; err != nil {
+	if err := tx.Order("reagent_items.created_at DESC").Find(&items).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -468,7 +613,18 @@ func GetReagentItems(c *gin.Context) {
 func GetReagentItemByUUID(c *gin.Context) {
 	uuid := c.Param("uuid")
 	var item models.ReagentItem
-	if err := database.DB.Preload("ReagentCatalog").Preload("Cabinet").Where("uuid = ?", uuid).First(&item).Error; err != nil {
+	tx := database.DB.
+		Preload("ReagentCatalog").
+		Preload("Cabinet").
+		Preload("ReagentRequest").
+		Preload("ReagentRequest.Requestor").
+		Preload("Logs", func(db *gorm.DB) *gorm.DB {
+			return db.Order("reagent_logs.created_at DESC")
+		}).
+		Preload("Logs.User").
+		Where("uuid = ?", uuid)
+
+	if err := tx.First(&item).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
 		return
 	}
@@ -491,6 +647,18 @@ func UpdateReagentItemStatus(c *gin.Context) {
 	var item models.ReagentItem
 	if err := database.DB.Where("uuid = ?", uuid).First(&item).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
+		return
+	}
+
+	if input.Status != "" && !isValidItemTransition(item.Status, input.Status) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": fmt.Sprintf("非法状态流转: %s -> %s", item.Status, input.Status),
+		})
+		return
+	}
+
+	if input.Status == "在库" && strings.TrimSpace(input.Location) == "" && strings.TrimSpace(item.Location) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "入库必须指定库位"})
 		return
 	}
 
@@ -548,22 +716,126 @@ func UpdateReagentItemStatus(c *gin.Context) {
 		}
 	}
 
-	// Check if this action completes the request's storage process
-	if item.Status == "在库" || item.Status == "已耗尽" {
-		var pendingItems int64
-		database.DB.Model(&models.ReagentItem{}).
-			Where("reagent_request_id = ? AND status = ?", item.ReagentRequestID, "已到货").
-			Count(&pendingItems)
-
-		if pendingItems == 0 {
-			// All items have been moved out of 'Arrived' state (presumably to 'InStorage')
-			database.DB.Model(&models.ReagentRequest{}).
-				Where("id = ?", item.ReagentRequestID).
-				Update("status", "已入库")
-		}
-	}
+	// 注意：此处不回写申购单状态。
+	// ReagentRequest（BPM-A）的终态是「已接单」，由采购员确认时设置。
+	// ReagentItem 的物理状态属于 BPM-B，两个流程通过外键关联，状态机独立。
 
 	c.JSON(http.StatusOK, item)
+}
+
+// CheckInReagentItem 研发扫码后确认入库位置（专用动作，区别于通用状态修改）
+func CheckInReagentItem(c *gin.Context) {
+	uuid := c.Param("uuid")
+	var input struct {
+		LabRoom   string `json:"lab_room"`
+		CabinetID uint   `json:"cabinet_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var item models.ReagentItem
+	if err := database.DB.Preload("ReagentCatalog").Where("uuid = ?", uuid).First(&item).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
+		return
+	}
+
+	if item.Status != "已到货" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅“已到货”状态允许扫码入库"})
+		return
+	}
+
+	var cabinet models.ReagentCabinet
+	if err := database.DB.First(&cabinet, input.CabinetID).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "试剂柜不存在"})
+		return
+	}
+
+	if input.LabRoom != "" && input.LabRoom != cabinet.Location {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "实验室与试剂柜位置不一致"})
+		return
+	}
+
+	if item.ReagentCatalog.IsControlled && cabinet.CabinetType != "易制毒制爆试剂柜" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "管控试剂必须入库至管控柜"})
+		return
+	}
+
+	finalLocation := fmt.Sprintf("%s / %s", cabinet.Location, cabinet.Name)
+
+	item.Status = "在库"
+	item.Location = finalLocation
+	item.CabinetID = input.CabinetID
+	if err := database.DB.Save(&item).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	log := models.ReagentLog{
+		ReagentItemID: item.UUID,
+		UserID:        1, // mock user
+		Action:        "扫码入库",
+		Quantity:      0,
+		Remarks:       fmt.Sprintf("扫码入库至 %s", finalLocation),
+	}
+	_ = database.DB.Create(&log).Error
+
+	c.JSON(http.StatusOK, item)
+}
+
+// PrintReagentLabels 批量打印标签（MVP：记录打印日志并返回可打印数据）
+func PrintReagentLabels(c *gin.Context) {
+	var input struct {
+		UUIDs []string `json:"uuids" binding:"required,min=1"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var items []models.ReagentItem
+	if err := database.DB.Preload("ReagentCatalog").Where("uuid IN ?", input.UUIDs).Find(&items).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if len(items) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No items found"})
+		return
+	}
+
+	type labelPayload struct {
+		UUID        string `json:"uuid"`
+		Name        string `json:"name"`
+		CASNumber   string `json:"cas_number"`
+		BatchNumber string `json:"batch_number"`
+		Status      string `json:"status"`
+	}
+
+	labels := make([]labelPayload, 0, len(items))
+	for _, item := range items {
+		labels = append(labels, labelPayload{
+			UUID:        item.UUID,
+			Name:        item.ReagentCatalog.Name,
+			CASNumber:   item.ReagentCatalog.CASNumber,
+			BatchNumber: item.BatchNumber,
+			Status:      item.Status,
+		})
+
+		_ = database.DB.Create(&models.ReagentLog{
+			ReagentItemID: item.UUID,
+			UserID:        1,
+			Action:        "二维码打印",
+			Quantity:      0,
+			Remarks:       "已生成并打印标签",
+		}).Error
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "labels ready",
+		"count":   len(labels),
+		"labels":  labels,
+	})
 }
 
 // ConsumeReagentItem 记录试剂的使用和余量扣减
@@ -629,6 +901,59 @@ func ConsumeReagentItem(c *gin.Context) {
 		UserID:        1, // Mock User ID
 		Action:        action,
 		Quantity:      input.ConsumeVolume,
+		Remarks:       remarks,
+	}
+	if err := tx.Create(&log).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	tx.Commit()
+	c.JSON(http.StatusOK, item)
+}
+
+// DepleteReagentItem 统一“耗尽核销”动作（供台账/详情/扫码复用）
+func DepleteReagentItem(c *gin.Context) {
+	uuid := c.Param("uuid")
+	var input struct {
+		Remarks string `json:"remarks"`
+	}
+	_ = c.ShouldBindJSON(&input)
+
+	tx := database.DB.Begin()
+
+	var item models.ReagentItem
+	if err := tx.Where("uuid = ?", uuid).First(&item).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
+		return
+	}
+
+	if item.Status != "在库" {
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅“在库”状态允许耗尽核销"})
+		return
+	}
+
+	consumed := item.RemainingVolume
+	item.RemainingVolume = 0
+	item.Status = "已耗尽"
+	if err := tx.Save(&item).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	remarks := strings.TrimSpace(input.Remarks)
+	if remarks == "" {
+		remarks = "标记为耗尽并核销回收"
+	}
+	log := models.ReagentLog{
+		ReagentItemID: item.UUID,
+		UserID:        1,
+		Action:        "空瓶核销",
+		Quantity:      consumed,
 		Remarks:       remarks,
 	}
 	if err := tx.Create(&log).Error; err != nil {
@@ -760,30 +1085,59 @@ You MUST reply with ONLY a JSON object exactly matching this schema:
 // CreateProcurementBatch 创建新的采购批次（上传 Excel 后调用）
 func CreateProcurementBatch(c *gin.Context) {
 	var input struct {
-		Period      string                        `json:"period" binding:"required"`
+		Period      string                        `json:"period"`
 		OrderNumber string                        `json:"order_number"`
 		Items       []models.ProcurementBatchItem `json:"items"`
+		DryRun      bool                          `json:"dry_run"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 从 header 中获取用户 ID（简化版认证）
-	uploaderID, _ := strconv.Atoi(c.GetHeader("X-User-ID"))
+	uploaderID := getUserIDOrDefault(c, 2)
+	orderNumber := strings.TrimSpace(input.OrderNumber)
 
-	if input.OrderNumber != "" {
-		var existing models.ProcurementBatch
-		if err := database.DB.Where("order_number = ?", input.OrderNumber).First(&existing).Error; err == nil {
-			c.JSON(http.StatusConflict, gin.H{"error": "该易派客订单已导入过，请勿重复操作！"})
-			return
-		}
+	var latestOrderBatch models.ProcurementBatch
+	if orderNumber != "" {
+		database.DB.Where("order_number = ?", orderNumber).Order("created_at DESC").First(&latestOrderBatch)
+	}
+	newItems, dedupStats := dedupeProcurementItems(orderNumber, input.Items)
+	if input.DryRun {
+		c.JSON(http.StatusOK, gin.H{
+			"message":              "解析完成",
+			"skipped_count":        dedupStats.SkippedCount,
+			"created_count":        dedupStats.CreatedCount,
+			"confirmable":          dedupStats.CreatedCount > 0,
+			"duplicate_in_file":    dedupStats.DuplicateInFile,
+			"duplicate_in_system":  dedupStats.DuplicateInSystem,
+			"duplicate_name_hints": dedupStats.DuplicateNameHints,
+		})
+		return
+	}
+
+	// 同订单重复上传但无新增行：返回最近批次，避免报错
+	if len(newItems) == 0 && latestOrderBatch.ID > 0 {
+		database.DB.Preload("Items").Preload("Uploader").First(&latestOrderBatch, latestOrderBatch.ID)
+		c.JSON(http.StatusOK, gin.H{
+			"message":              "无新增条目，已跳过重复导入",
+			"skipped_count":        dedupStats.SkippedCount,
+			"created_count":        0,
+			"confirmable":          false,
+			"duplicate_in_file":    dedupStats.DuplicateInFile,
+			"duplicate_in_system":  dedupStats.DuplicateInSystem,
+			"duplicate_name_hints": dedupStats.DuplicateNameHints,
+			"id":                   latestOrderBatch.ID,
+			"items":                latestOrderBatch.Items,
+			"batch":                latestOrderBatch,
+		})
+		return
 	}
 
 	batch := models.ProcurementBatch{
-		UploaderID:  uint(uploaderID),
-		Period:      input.Period,
-		OrderNumber: input.OrderNumber,
+		UploaderID:  uploaderID,
+		Period:      strings.TrimSpace(input.Period),
+		OrderNumber: orderNumber,
 		Status:      "待确认",
 	}
 	if err := database.DB.Create(&batch).Error; err != nil {
@@ -792,8 +1146,9 @@ func CreateProcurementBatch(c *gin.Context) {
 	}
 
 	// 自动匹配逻辑：尝试用 CAS 号或名称模糊匹配品目字典
-	for i := range input.Items {
-		item := &input.Items[i]
+	createdCount := 0
+	for i := range newItems {
+		item := &newItems[i]
 		item.BatchID = batch.ID
 		item.MatchStatus = "未匹配"
 
@@ -811,7 +1166,7 @@ func CreateProcurementBatch(c *gin.Context) {
 					// 进一步尝试匹配到最近的待采购 / 已接单的申购单
 					var request models.ReagentRequest
 					if err := database.DB.Where("reagent_catalog_id = ? AND status IN ?", catalog.ID, []string{"待采购", "已接单"}).
-						Order("created_at DESC").First(&request).Error; err == nil {
+						Order("reagent_requests.created_at DESC").First(&request).Error; err == nil {
 						item.MatchedRequestID = &request.ID
 					}
 				}
@@ -829,7 +1184,7 @@ func CreateProcurementBatch(c *gin.Context) {
 					// 模糊匹配成功的，也尝试找一下申购单
 					var request models.ReagentRequest
 					if err := database.DB.Where("reagent_catalog_id = ? AND status IN ?", catalog.ID, []string{"待采购", "已接单"}).
-						Order("created_at DESC").First(&request).Error; err == nil {
+						Order("reagent_requests.created_at DESC").First(&request).Error; err == nil {
 						item.MatchedRequestID = &request.ID
 					}
 				}
@@ -837,17 +1192,29 @@ func CreateProcurementBatch(c *gin.Context) {
 		}
 
 		database.DB.Create(item)
+		createdCount++
 	}
 
 	// 重新加载含 Items 的完整批次
 	database.DB.Preload("Items").Preload("Uploader").First(&batch, batch.ID)
-	c.JSON(http.StatusCreated, batch)
+	c.JSON(http.StatusCreated, gin.H{
+		"message":              "导入完成",
+		"skipped_count":        dedupStats.SkippedCount,
+		"created_count":        createdCount,
+		"confirmable":          createdCount > 0,
+		"duplicate_in_file":    dedupStats.DuplicateInFile,
+		"duplicate_in_system":  dedupStats.DuplicateInSystem,
+		"duplicate_name_hints": dedupStats.DuplicateNameHints,
+		"id":                   batch.ID,
+		"items":                batch.Items,
+		"batch":                batch,
+	})
 }
 
 // GetProcurementBatches 获取所有采购批次列表
 func GetProcurementBatches(c *gin.Context) {
 	var batches []models.ProcurementBatch
-	database.DB.Preload("Uploader").Preload("Items").Order("created_at DESC").Find(&batches)
+	database.DB.Preload("Uploader").Preload("Items").Order("procurement_batches.created_at DESC").Find(&batches)
 	c.JSON(http.StatusOK, batches)
 }
 
@@ -1004,17 +1371,19 @@ func ReceiveBatchItem(c *gin.Context) {
 	}
 
 	createdItemsCount := 0
+	createdUUIDs := make([]string, 0, input.Quantity)
 	for q := 0; q < input.Quantity; q++ {
 		reagentItem := models.ReagentItem{
 			ReagentCatalogID: *item.MatchedCatalogID,
-			Status:           "已到货", // 呆在分拣暂存区
-			Location:         "分拣区(临时区)",
+			Status:           "已到货", // 呆在暂存区
+			Location:         ReagentStagingArea,
 		}
 		if reqID > 0 {
 			reagentItem.ReagentRequestID = reqID
 		}
 		database.DB.Create(&reagentItem)
 		createdItemsCount++
+		createdUUIDs = append(createdUUIDs, reagentItem.UUID)
 	}
 
 	item.ReceivedQuantity += input.Quantity
@@ -1030,6 +1399,7 @@ func ReceiveBatchItem(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message":            "Items received and marked for staging",
 		"created_items":      createdItemsCount,
+		"created_uuids":      createdUUIDs,
 		"new_receive_status": item.ReceiveStatus,
 	})
 }
@@ -1048,7 +1418,7 @@ func CreateDispenseRequest(c *gin.Context) {
 		return
 	}
 
-	requesterID, _ := strconv.Atoi(c.GetHeader("X-User-ID"))
+	requesterID := getUserIDOrDefault(c, 1)
 
 	// 检查该试剂是否存在且在库
 	var reagentItem models.ReagentItem
@@ -1056,9 +1426,25 @@ func CreateDispenseRequest(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Reagent item not found"})
 		return
 	}
+	if reagentItem.Status != "在库" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅“在库”试剂可发起领用申请"})
+		return
+	}
+	if !reagentItem.ReagentCatalog.IsControlled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "普通试剂不走领用申请，请直接登记消耗/耗尽"})
+		return
+	}
+	if input.Amount <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "领取量必须大于 0"})
+		return
+	}
+	if reagentItem.RemainingVolume > 0 && input.Amount > reagentItem.RemainingVolume {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "领取量超过当前余量"})
+		return
+	}
 
 	dispenseReq := models.ReagentDispenseRequest{
-		RequesterID:   uint(requesterID),
+		RequesterID:   requesterID,
 		ReagentItemID: input.ReagentItemID,
 		Amount:        input.Amount,
 		Purpose:       input.Purpose,
@@ -1066,10 +1452,8 @@ func CreateDispenseRequest(c *gin.Context) {
 	}
 
 	// 管控品需要设置双签超时
-	if reagentItem.ReagentCatalog.IsControlled {
-		expires := time.Now().Add(24 * time.Hour)
-		dispenseReq.ExpiresAt = &expires
-	}
+	expires := time.Now().Add(24 * time.Hour)
+	dispenseReq.ExpiresAt = &expires
 
 	if err := database.DB.Create(&dispenseReq).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create dispense request"})
@@ -1087,18 +1471,18 @@ func GetDispenseRequests(c *gin.Context) {
 
 	// 按角色过滤
 	role := c.Query("role")
-	userID := c.GetHeader("X-User-ID")
+	userID := getUserIDOrDefault(c, 1)
 
 	switch role {
 	case "leader":
 		query = query.Where("status IN ?", []string{"待审批", "已通过", "待双签", "已完成", "已驳回"})
 	case "key_holder":
-		query = query.Where("(key_holder_a_id = ? OR key_holder_b_id = ?) AND status = ?", userID, userID, "待双签")
+		query = query.Where("(key_holder_a_id = ? OR key_holder_b_id = ?) AND reagent_dispense_requests.status = ?", userID, userID, "待双签")
 	default:
 		query = query.Where("requester_id = ?", userID)
 	}
 
-	query.Order("created_at DESC").Find(&requests)
+	query.Order("reagent_dispense_requests.created_at DESC").Find(&requests)
 	c.JSON(http.StatusOK, requests)
 }
 
@@ -1127,8 +1511,7 @@ func LeaderApproveDispense(c *gin.Context) {
 		return
 	}
 
-	leaderID, _ := strconv.Atoi(c.GetHeader("X-User-ID"))
-	leaderIDUint := uint(leaderID)
+	leaderIDUint := getUserIDOrDefault(c, 101)
 	now := time.Now()
 
 	if !body.Approved {
@@ -1193,8 +1576,7 @@ func KeyHolderConfirmDispense(c *gin.Context) {
 		return
 	}
 
-	holderID, _ := strconv.Atoi(c.GetHeader("X-User-ID"))
-	holderIDUint := uint(holderID)
+	holderIDUint := getUserIDOrDefault(c, 1)
 	now := time.Now()
 
 	if !body.Confirmed {

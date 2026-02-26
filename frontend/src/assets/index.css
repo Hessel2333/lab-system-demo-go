@@ -73,6 +73,118 @@
 
     body {
         @apply bg-background text-foreground antialiased;
-        font-family: 'Inter', sans-serif;
+        font-family: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+}
+
+@layer components {
+    :root {
+        --apple-surface: 248 250 252;
+        --apple-surface-strong: 241 245 249;
+        --apple-border: 226 232 240;
+        --apple-text-subtle: 100 116 139;
+    }
+
+    .reagent-scope {
+        color: rgb(15 23 42);
+    }
+
+    .reagent-scope button,
+    .reagent-scope [role="button"] {
+        @apply transition-all duration-200 ease-out;
+    }
+
+    .reagent-scope input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    .reagent-scope select,
+    .reagent-scope textarea,
+    .apple-modal-panel input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    .apple-modal-panel select,
+    .apple-modal-panel textarea {
+        @apply rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm;
+        @apply focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400;
+    }
+
+    .reagent-scope input::placeholder,
+    .reagent-scope textarea::placeholder,
+    .apple-modal-panel input::placeholder,
+    .apple-modal-panel textarea::placeholder {
+        color: rgb(var(--apple-text-subtle));
+    }
+
+    .apple-segmented {
+        @apply inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-100/90 p-1;
+    }
+
+    .apple-segmented-btn {
+        @apply rounded-lg px-3 py-1.5 text-xs font-semibold;
+    }
+
+    .apple-segmented-btn-icon {
+        @apply flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold;
+    }
+
+    .apple-segmented-btn-active {
+        @apply bg-white text-blue-700 shadow-sm;
+    }
+
+    .apple-segmented-btn-idle {
+        @apply text-slate-500 hover:bg-white/60 hover:text-slate-700;
+    }
+
+    .apple-table-wrap {
+        @apply overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm;
+    }
+
+    .apple-table-wrap table {
+        @apply w-full text-sm text-left;
+    }
+
+    .apple-table-wrap thead {
+        @apply border-b border-slate-200 bg-slate-50/80;
+    }
+
+    .apple-table-wrap th {
+        @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500;
+    }
+
+    .apple-table-wrap tbody tr {
+        @apply border-b border-slate-100;
+    }
+
+    .apple-table-wrap tbody tr:hover {
+        @apply bg-slate-50/70;
+    }
+
+    .apple-modal-backdrop {
+        @apply fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm;
+    }
+
+    .apple-modal-panel {
+        @apply w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl;
+    }
+
+    .apple-toast-wrap {
+        @apply fixed bottom-6 right-6 z-[70] max-w-sm;
+    }
+
+    .apple-toast {
+        @apply flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium shadow-lg;
+    }
+
+    .apple-toast-success {
+        @apply border-emerald-200 bg-emerald-50 text-emerald-800;
+    }
+
+    .apple-toast-error {
+        @apply border-red-200 bg-red-50 text-red-800;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .reagent-scope * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
     }
 }

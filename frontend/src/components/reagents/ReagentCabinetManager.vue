@@ -157,9 +157,9 @@ onMounted(fetch)
     </div>
 
     <!-- 新建/编辑弹窗 -->
-    <div v-if="showDialog" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+    <div v-if="showDialog" class="apple-modal-backdrop"
       @click.self="showDialog = false">
-      <div class="bg-white rounded-2xl w-full max-w-md shadow-xl p-6 space-y-5">
+      <div class="apple-modal-panel max-w-md p-6 space-y-5">
         <h3 class="text-lg font-bold text-gray-900">{{ isEditing ? '编辑' : '新建' }}试剂柜点位</h3>
         <div class="space-y-4">
           <div class="space-y-1.5">

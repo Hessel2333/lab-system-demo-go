@@ -4,6 +4,7 @@ import { Loader2, Search } from 'lucide-vue-next'
 import Input from '@/components/ui/Input.vue'
 import Card from '@/components/ui/Card.vue'
 import axios from 'axios'
+import { formatAmount, formatNumber, normalizeUnit } from '@/lib/quantity'
 
 const items = ref<any[]>([])
 const isLoading = ref(true)
@@ -123,16 +124,16 @@ onMounted(() => {
               <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
               <Input v-model="searchQuery" class="pl-9" placeholder="搜索条形码、名称或存放位置..." />
           </div>
-          <div class="flex gap-1 rounded-lg bg-gray-100 p-1">
+          <div class="apple-segmented">
               <button
                 v-for="s in statusOptions"
                 :key="s"
                 @click="setStatusFilter(s)"
                 :class="[
-                  'px-3 py-1.5 text-xs font-medium rounded-md transition-all',
+                  'apple-segmented-btn',
                   statusFilter === s
-                    ? 'bg-white text-blue-700 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'apple-segmented-btn-active'
+                    : 'apple-segmented-btn-idle'
                 ]"
               >
                 {{ s }}
@@ -146,7 +147,7 @@ onMounted(() => {
       <div v-else-if="filteredItems.length === 0" class="text-center text-gray-500 py-8">
         暂无匹配的试剂库存记录。
       </div>
-      <div v-else class="overflow-x-auto rounded-lg border">
+      <div v-else class="apple-table-wrap">
         <table class="w-full text-sm text-left">
           <thead class="text-xs text-gray-700 uppercase bg-gray-50">
             <tr>
@@ -171,14 +172,14 @@ onMounted(() => {
               <td class="px-6 py-4">
                   <div v-if="getRemainingPercent(item) >= 0" class="min-w-[90px]">
                     <div class="flex items-center justify-between text-[10px] text-gray-500 mb-1">
-                      <span>{{ item.remaining_volume }}{{ item.reagent_catalog?.unit?.replace(/[0-9]/g, '') || 'ml' }}</span>
-                      <span>/ {{ item.capacity }}</span>
+                      <span>{{ formatAmount(item.remaining_volume, item.reagent_catalog?.unit, 'ml') }}</span>
+                      <span>/ {{ formatNumber(item.capacity) }}</span>
                     </div>
                     <div class="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                       <div :class="['h-full rounded-full transition-all', getRemainingColor(getRemainingPercent(item))]" :style="{ width: getRemainingPercent(item) + '%' }"></div>
                     </div>
                   </div>
-                  <span v-else class="text-xs text-gray-400">{{ item.reagent_catalog?.unit || '--' }}</span>
+                  <span v-else class="text-xs text-gray-400">{{ normalizeUnit(item.reagent_catalog?.unit, '--') }}</span>
               </td>
               <td class="px-6 py-4 text-gray-700">
                   <span v-if="item.reagent_request?.requestor?.real_name" class="inline-flex items-center gap-1">

@@ -14,6 +14,8 @@ const isConfirming = ref(false)
 
 const batchId = ref<number | null>(null)
 const batchItems = ref<any[]>([])
+const batchStatus = ref('')
+const importedCreatedCount = ref(0)
 const requests = ref<any[]>([])
 const users = ref<any[]>([])
 
@@ -79,12 +81,30 @@ const onFileSelect = (e: Event) => {
     if (file) processFile(file)
 }
 
+const normalizeCell = (cell: any) => {
+    if (cell == null) return ''
+    if (typeof cell === 'string' || typeof cell === 'number' || typeof cell === 'boolean') {
+        return String(cell).trim()
+    }
+    if (typeof cell === 'object') {
+        if (typeof cell.w === 'string') return cell.w.trim()
+        if (cell.v != null) return String(cell.v).trim()
+    }
+    return String(cell).trim()
+}
+
+const buildSourceRowHash = (row: any[]) => {
+    const normalized = row.map((cell) => normalizeCell(cell).toLowerCase())
+    return normalized.join('|')
+}
+
 const processFile = async (file: File) => {
     isUploading.value = true
     try {
         let items: any[] = []
         let autoPeriod = ''
         let orderNumber = ''
+        const isManualSeed = file.size === 0
 
         if (file.size > 0) {
             //真实解析 Excel
@@ -106,28 +126,29 @@ const processFile = async (file: File) => {
             for (let i = 2; i < rawData.length; i++) {
                 const row = rawData[i]
                 if (!row || row.length < 28) continue
-                const name = row[23]
+                const name = normalizeCell(row[23])
                 if (!name || name === '商品名称') continue // 跳过空行或表头本身
                 
                 // 订单编号 (从“订单编号”第 1 列)
                 if (!orderNumber && row[0]) {
-                    orderNumber = String(row[0]).trim()
+                    orderNumber = normalizeCell(row[0])
                 }
 
                 // 自动尝试提取周期 (从“下单时间”第 11 列)
                 if (!autoPeriod && row[10]) {
-                    const dateStr = String(row[10]).trim()
+                    const dateStr = normalizeCell(row[10])
                     const match = dateStr.match(/^(\d{4}-\d{2})/)
                     if (match && match[1]) autoPeriod = match[1]
                 }
                 
                 items.push({
-                    reagent_name: name.toString().trim(),
+                    row_hash: buildSourceRowHash(row),
+                    reagent_name: name,
                     cas_number: '', // 易派客导出通常没有分离的 CAS 号
-                    quantity: parseFloat(row[27]) || 1,
-                    unit: (row[28] || '瓶').toString().trim(),
-                    material_category: row[22] ? row[22].toString().trim() : '',
-                    product_category: row[24] ? row[24].toString().trim() : ''
+                    quantity: parseFloat(normalizeCell(row[27])) || 1,
+                    unit: normalizeCell(row[28]) || '瓶',
+                    material_category: normalizeCell(row[22]),
+                    product_category: normalizeCell(row[24])
                 })
             }
 
@@ -139,10 +160,24 @@ const processFile = async (file: File) => {
             
             if (autoPeriod) {
                 period.value = autoPeriod
-            } else if (!period.value) {
-                toast('无法从 Excel 自动识别周期，请手动选择后再上传', 'error')
-                isUploading.value = false
-                return
+            }
+
+            // 先做重复识别，不改变现有导入流程和界面结构
+            const precheck = await axios.post('/api/reagents/procurement-batches', {
+                period: period.value,
+                order_number: orderNumber,
+                items: items,
+                dry_run: true
+            })
+            const preSkipped = Number(precheck.data?.skipped_count ?? 0)
+            if (preSkipped > 0) {
+                const hintNames = Array.isArray(precheck.data?.duplicate_name_hints)
+                    ? precheck.data.duplicate_name_hints.slice(0, 5).join('、')
+                    : ''
+                toast(hintNames
+                    ? `检测到重复项目 ${preSkipped} 条（如：${hintNames}），导入时将自动跳过`
+                    : `检测到重复项目 ${preSkipped} 条，导入时将自动跳过`
+                )
             }
         }
 
@@ -153,21 +188,39 @@ const processFile = async (file: File) => {
             items: items
         })
 
-        batchId.value = res.data.id
-        batchItems.value = res.data.items || []
+        batchId.value = res.data.id || res.data.batch?.id || null
+        batchItems.value = res.data.items || res.data.batch?.items || []
+        batchStatus.value = res.data.batch?.status || '待确认'
 
         await fetchRequests()
         await fetchUsers()
+        const createdCount = Number(res.data.created_count ?? batchItems.value.length ?? 0)
+        importedCreatedCount.value = createdCount
+        // 只要本次有新增条目，就应允许继续确认，不受历史批次状态干扰
+        if (createdCount > 0) {
+            batchStatus.value = '待确认'
+        }
+        const skippedCount = Number(res.data.skipped_count ?? 0)
+        const responseMessage = String(res.data.message || '')
+        const noNewRows = createdCount === 0 && (skippedCount > 0 || responseMessage.includes('无新增条目'))
         step.value = 'match'
         activeTab.value = '待处理'
-        toast(`成功解析 ${items.length} 条数据，请核对`)
+        if (noNewRows) {
+            if (batchStatus.value !== '待确认' && !isManualSeed) {
+                toast(`检测到重复导入：无新增条目（重复 ${skippedCount} 条），已读取文件并展示历史批次`)
+            } else {
+                toast(`检测到重复导入：无新增条目（重复 ${skippedCount} 条）`)
+            }
+        } else if (skippedCount > 0) {
+            toast(`导入完成：新增 ${createdCount} 条，跳过重复 ${skippedCount} 条`)
+        } else if (isManualSeed) {
+            toast('空批次已创建，请在下方手动追加明细')
+        } else {
+            toast(`成功解析并导入 ${createdCount} 条数据，请核对`)
+        }
 
     } catch (error: any) {
-        if (error.response && error.response.status === 409) {
-            toast(error.response.data.error || '上传重复订单', 'error')
-        } else {
-            toast('文件处理失败，请重试', 'error')
-        }
+        toast(error.response?.data?.error || '文件处理失败，请重试', 'error')
     } finally {
         isUploading.value = false
     }
@@ -271,13 +324,19 @@ const ignoreAllUnmatched = async () => {
 // --- Step 3: 确认并赋码 ---
 const confirmBatch = async () => {
     if (!batchId.value) return
+    if (batchStatus.value !== '待确认') {
+        toast('该批次已确认，可直接到「到货台账」执行点验与入库')
+        step.value = 'done'
+        return
+    }
     isConfirming.value = true
     try {
         const res = await axios.post(`/api/reagents/procurement-batches/${batchId.value}/confirm`)
+        batchStatus.value = '已确认'
         toast(`到货确认完成！共生成 ${res.data.items_created} 件库存条目`)
         step.value = 'done'
-    } catch {
-        toast('确认失败，请重试', 'error')
+    } catch (error: any) {
+        toast(error.response?.data?.error || '确认失败，请重试', 'error')
     } finally {
         isConfirming.value = false
     }
@@ -289,6 +348,8 @@ const resetAll = () => {
     period.value = ''
     batchId.value = null
     batchItems.value = []
+    batchStatus.value = ''
+    importedCreatedCount.value = 0
 }
 
 // 当前年月
@@ -419,13 +480,13 @@ const createEmptyBatch = () => {
             <label class="block text-[10px] text-gray-500 mb-0.5">数量</label>
             <input v-model.number="newItemQty" type="number" min="1" class="w-full px-2 py-1 text-xs border rounded" />
           </div>
-          <Button size="sm" class="bg-blue-600 hover:bg-blue-700 text-white text-xs shrink-0" @click="addManualItem">
+          <Button size="sm" variant="primary" class="text-xs shrink-0" @click="addManualItem">
             + 追加
           </Button>
         </div>
 
         <!-- 明细表格 -->
-        <div class="overflow-x-auto rounded-lg border max-h-96 overflow-y-auto">
+        <div class="apple-table-wrap max-h-96 overflow-y-auto">
           <table class="w-full text-xs">
             <thead class="bg-gray-50 sticky top-0">
               <tr>
@@ -494,7 +555,7 @@ const createEmptyBatch = () => {
 
         <!-- 操作按钮 -->
         <div class="flex justify-end gap-2 pt-2">
-          <Button size="sm" class="bg-gray-200 hover:bg-gray-300 text-gray-700" @click="resetAll">
+          <Button size="sm" variant="secondary" @click="resetAll">
             取消
           </Button>
           <Button
@@ -504,7 +565,8 @@ const createEmptyBatch = () => {
             @click="confirmBatch"
           >
             <Loader2 v-if="isConfirming" class="w-3.5 h-3.5 animate-spin mr-1" />
-            <span v-if="matchStats.unmatched > 0">忽略其余杂项，仅赋码这 {{ matchStats.matched }} 项</span>
+            <span v-if="batchStatus !== '待确认'">已确认，去到货台账</span>
+            <span v-else-if="matchStats.unmatched > 0">忽略其余杂项，仅赋码这 {{ matchStats.matched }} 项</span>
             <span v-else>确认入库 ({{ matchStats.matched }}项)</span>
           </Button>
         </div>
@@ -514,8 +576,8 @@ const createEmptyBatch = () => {
       <div v-if="step === 'done'" class="text-center py-10 space-y-4">
         <CheckCircle2 class="w-16 h-16 mx-auto text-green-500" />
         <h3 class="text-lg font-semibold text-gray-900">批次导入完成！</h3>
-        <p class="text-sm text-gray-600">试剂已进入「分拣区」，等待研发人员或采购员扫码入库。</p>
-        <Button size="sm" class="bg-blue-600 hover:bg-blue-700 text-white" @click="resetAll">
+        <p class="text-sm text-gray-600">试剂已进入「暂存区」，等待研发人员或采购员扫码入库。</p>
+        <Button size="sm" variant="primary" @click="resetAll">
           导入新批次
         </Button>
       </div>
@@ -530,10 +592,10 @@ const createEmptyBatch = () => {
       leave-from-class="translate-y-0 opacity-100"
       leave-to-class="translate-y-4 opacity-0"
     >
-      <div v-if="showToast" class="fixed bottom-6 right-6 z-50 max-w-sm">
+      <div v-if="showToast" class="apple-toast-wrap">
         <div :class="[
-          'px-4 py-3 rounded-lg shadow-lg border text-sm font-medium flex items-center gap-2',
-          toastType === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'
+          'apple-toast',
+          toastType === 'success' ? 'apple-toast-success' : 'apple-toast-error'
         ]">
           <span>{{ toastMessage }}</span>
         </div>

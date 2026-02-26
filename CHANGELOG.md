@@ -2,6 +2,83 @@
 
 记录系统在近期迭代中实施的具体业务逻辑优化与 Bug 修复。
 
+## [2026-02-26] - UI 组件标准化重构与全生命周期交互升级
+
+### 🏗️ 视觉规范化 (UI Standardization)
+
+**引入 `class-variance-authority` (CVA) 构建生产级核心组件库**，彻底解决样式硬编码导致的视觉不一致问题：
+
+- **[Button.vue](file:///Users/tian/Codes/lab-system-demo-go/frontend/src/components/ui/Button.vue)**: 支持 5 种具备类型保护的语义化变体 (`primary`, `secondary`, `outline`, `ghost`, `destructive`) 与 3 种大小规格，内置交互微动效。
+- **[Badge.vue](file:///Users/tian/Codes/lab-system-demo-go/frontend/src/components/ui/Badge.vue)**: 统一全系统状态标签，支持 `success`, `warning`, `info`, `destructive`, `default` 语义化色彩变体。
+- **[Dialog.vue](file:///Users/tian/Codes/lab-system-demo-go/frontend/src/components/ui/Dialog.vue)**: 规范化弹窗容器，支持从 `sm` 到 `full` 的 10 种标准宽度配置，内置平滑入场缩放动画与背景高斯模糊。
+
+### 🚀 业务交互升级 (Features & UX)
+
+- **物资生命周期档案 (Life-cycle Center)**: 深度重构 **[ItemLifecycleDialog.vue](file:///Users/tian/Codes/lab-system-demo-go/frontend/src/components/reagents/ItemLifecycleDialog.vue)**。现在每一瓶试剂都拥有独立的“防伪溯源卡”，集成实物二维码、物理库位坐标、剩余余量动态看板及全量操作流水时间轴。
+- **BPM 进度看板规范化**: 统一 **[RequestProgressDialog.vue](file:///Users/tian/Codes/lab-system-demo-go/frontend/src/components/reagents/RequestProgressDialog.vue)** 交互视觉，支持在同一界面查看 BPM-A (采购商下单进度) 与 BPM-B (实物点收/入库进度)，并提供一键批量入库操作。
+- **主页大盘重构**: 
+    - 采用 **CVA 驱动的胶囊式 Tab 切换**，提升导航反馈感；
+    - 关键指标卡片采用更鲜明的配色方案，增强状态提示效果（如红色代表低库存预警）；
+    - 操作流水区域逻辑重构，自动按日志类型映射标准 Badge 标签（如“扫码入库”自动标记为 `success`）。
+
+### 🔧 技术债务清理 & 类型安全 (Maintenance)
+
+- **工具链增强**: 引入 `cn` (clsx + tailwind-merge) 工具函数，从根本上解决动态样式合并时的样式覆盖冲突问题。
+- **代码净化**: 全量清除此前散落在各业务页面的硬编码颜色逻辑，统一收敛至 UI 组件库管理。
+- **类型模型加固**: 清除了全项目所有模板层级的 `Object is possibly 'undefined'` 类型推断风险，通过 `vue-tsc` 构建系统扫描。
+- **冗余剔除**: 清理了 20+ 处未使用的 Lucide 图标引入、重复变量定义以及废弃的 CSS 冗余类，显著减小包体积。
+
+---
+
+## [2026-02-26] - 双 BPM 工作流重构与 Excel 采购导入全面升级
+
+### 🏗️ 架构重构 (Architecture)
+
+**正式引入 BPM-A / BPM-B 双通道设计**，将原有的单一采购审批流拆分为两条独立业务闭环：
+
+| 流程 | 业务含义 | 起止节点 |
+|---|---|---|
+| **BPM-A** 需求采购闭环 | 研发提需 → 团队长审批 → 采购员下单确认 | 申购 → `已接单` |
+| **BPM-B** 到货资产流 | Excel 导入 → 智能过滤匹配 → 物理签收 → 入库上架 | CSV 上传 → `已入库` |
+
+### 🚀 新增功能 (Features)
+
+**BPM-A 需求侧**
+- 新增「团队长审批」节点 (`POST /api/reagents/requests/:id/leader-approve`)，管控品申购须经团队长审批后方才转采购。
+- 采购员「已接单」动作支持填写外部平台订单号（易派客等）及上传截图凭证，实现 BPM-A 采购闭环。
+- 申购状态扩充：`待审批` → `待团队长审批` → `待采购` → `已接单`，各角色按角色权限只见自己应操作的按钮。
+
+**BPM-B 到货侧**
+- **Excel 智能解析与过滤**：上传易派客明细后，系统自动提取「物资类别」(第22列) 和「商品类别」(第24列)；非试剂耗材（化玻、劳保用品等）在后端直接标记为 `已忽略`，不进入匹配赛道。
+- **自动提取采购周期**：从 Excel「下单时间」列（第11列）自动识别并填充批次所属年月（如 `2026-01`），无需手动选择。
+- **订单号防重拦截**：读取 Excel 第1列「订单编号」并传至后端，若同一订单已导入则立即拦截并提示，杜绝重复录入。
+- **申购单认领 + 空降派库双模式**：明细匹配操作栏的下拉框升级为双分组（`<optgroup>`）：
+  - **最佳推荐**：列出系统内「待采购」状态的申购单，按品目+需求人呈现；
+  - **直接指派**：若无对应申购单（紧急口头采购），可直接选择研发人员名字进行派发；系统将在后台自动代填一条紧急闭环单据，台账不留缺口。
+- **四 Tab 状态工作台**：匹配页面增加「待处理 / 已匹配 / 已忽略 / 全部」标签页过滤，大批量明细一目了然；「一键忽略全部待处理杂项」提供扫尾快捷操作。
+- **三段式物流验收**（`ProcurementReceiving.vue`）：明细确认后不再直接生成试剂瓶资产；采购员在独立收货台账页面逐批次物理点验后，系统才正式生成带 UUID 的 `ReagentItem` 实体（进入暂存分拣区 `已到货`），同时自动完成关联申购单的状态闭合。
+
+**领用审批与双人双锁**
+- 新增领用申请流程（`POST /api/reagents/dispense-requests`）：研发提交用量/用途申请 → 团队长审批 → 管控品钥匙持有人双签确认/驳回。
+- 双签环节设 24h 超时保护，超时自动驳回并通知申请人。
+
+### 🔄 后端数据模型变更 (Schema)
+
+| 表/字段 | 变更类型 | 说明 |
+|---|---|---|
+| `ReagentRequest` | MODIFY | 新增 `order_reference`, `order_attachment`, `closed_at` |
+| `ProcurementBatch` | NEW | 批次导入表，含 `order_number`（唯一索引防重）|
+| `ProcurementBatchItem` | NEW | 明细行，含 `match_status`, `receive_status`, `material_category`, `product_category`, `matched_user_id` |
+| `ReagentDispenseRequest` | NEW | 领用申请与双签追踪 |
+
+### 🐞 修复与优化 (Fixes & UX)
+
+- 采购审批列表中引入「AI 库存建议」展开行，直接在请购条目内展示当前库存状态与参考建议，辅助采购员决策。
+- 品目管理表格恢复「预警线」列可编辑，恢复用户自定义库存预警阈值功能。
+- 系统大盘告警区增加独立固高滚动，防止批量告警淹没操作区域。
+
+---
+
 ## [2026-02-25] - 试剂柜管理系统深化与交互体验升级
 
 ### 🚀 新增功能 (Features)
