@@ -2,7 +2,7 @@
 import { ref, onMounted, watch, computed } from 'vue'
 import axios from 'axios'
 import Card from '@/components/ui/Card.vue'
-import { LayoutDashboard, ShoppingCart, List, ScanLine, Layers, BookOpen, FileSpreadsheet } from 'lucide-vue-next'
+import { LayoutDashboard, ShoppingCart, List, ScanLine, Layers, BookOpen, FileSpreadsheet, ClipboardCheck } from 'lucide-vue-next'
 
 import ReagentScanner from '@/components/reagents/ReagentScanner.vue'
 import ReagentRequestWizard from '@/components/reagents/ReagentRequestWizard.vue'
@@ -10,6 +10,7 @@ import ReagentRequestList from '@/components/reagents/ReagentRequestList.vue'
 import ReagentUnifiedInventory from '@/components/reagents/ReagentUnifiedInventory.vue'
 import ReagentCatalogManager from '@/components/reagents/ReagentCatalogManager.vue'
 import ProcurementBatchImport from '@/components/reagents/ProcurementBatchImport.vue'
+import ReagentDispensePanel from '@/components/reagents/ReagentDispensePanel.vue'
 
 // ECharts
 import { use } from 'echarts/core'
@@ -102,6 +103,7 @@ const tabs = computed(() => {
           return [
               { id: 'requests', label: '试剂申购', icon: ShoppingCart },
               { id: 'history', label: '我的申购', icon: List },
+              { id: 'dispense', label: '我的领用', icon: ClipboardCheck },
               { id: 'unified-inventory', label: '库存台账', icon: Layers },
               { id: 'scanner', label: '扫码领用', icon: ScanLine },
           ]
@@ -116,6 +118,7 @@ const tabs = computed(() => {
       case 'leader':
           return [
               { id: 'dashboard', label: '概览仪表盘(报表)', icon: LayoutDashboard },
+              { id: 'dispense-approve', label: '领用审批', icon: ClipboardCheck },
               { id: 'unified-inventory', label: '库存台账', icon: Layers },
           ]
       default:
@@ -368,6 +371,16 @@ const trendOption = computed(() => {
     <!-- Content: Scanner -->
     <div v-if="activeTab === 'scanner'" class="max-w-md mx-auto">
         <ReagentScanner />
+    </div>
+
+    <!-- Content: Dispense (Researcher) -->
+    <div v-if="activeTab === 'dispense'" class="space-y-4">
+        <ReagentDispensePanel role="researcher" />
+    </div>
+
+    <!-- Content: Dispense Approve (Leader) -->
+    <div v-if="activeTab === 'dispense-approve'" class="space-y-4">
+        <ReagentDispensePanel role="leader" />
     </div>
 
   </div>
