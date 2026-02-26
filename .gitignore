@@ -4,6 +4,9 @@
 backend/.env
 .env
 .env.local
+*.xls
+*.xlsx
+*.csv
 
 # ===========================
 # Go 编译产物
