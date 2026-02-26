@@ -14,8 +14,10 @@ const isConfirming = ref(false)
 
 const batchId = ref<number | null>(null)
 const batchItems = ref<any[]>([])
-const catalogs = ref<any[]>([])
+const requests = ref<any[]>([])
 
+// 为了 UI 区分标签页
+const activeTab = ref<'待处理' | '已匹配' | '已忽略' | '全部'>('待处理')
 
 const showToast = ref(false)
 const toastMessage = ref('')
@@ -27,11 +29,12 @@ const toast = (msg: string, type: 'success' | 'error' = 'success') => {
     setTimeout(() => { showToast.value = false }, 3000)
 }
 
-// 加载品目字典（用于手动匹配下拉）
-const fetchCatalogs = async () => {
+// 加载待分发的申购单（替代原来的字典匹配）
+const fetchRequests = async () => {
     try {
-        const res = await axios.get('/api/reagents/catalogs')
-        catalogs.value = res.data
+        const res = await axios.get('/api/reagents/requests')
+        // 筛选出待采购的申购单，准备被派库
+        requests.value = res.data.filter((r: any) => r.status === '待采购')
     } catch { /* ignore */ }
 }
 
@@ -39,8 +42,18 @@ const fetchCatalogs = async () => {
 const matchStats = computed(() => {
     const total = batchItems.value.length
     const matched = batchItems.value.filter(i => i.match_status === '自动匹配' || i.match_status === '手动匹配').length
-    const unmatched = total - matched
-    return { total, matched, unmatched }
+    const ignored = batchItems.value.filter(i => i.match_status === '已忽略').length
+    const unmatched = total - matched - ignored
+    return { total, matched, unmatched, ignored }
+})
+
+// 按状态过滤列表
+const filteredItems = computed(() => {
+    if (activeTab.value === '全部') return batchItems.value
+    if (activeTab.value === '待处理') return batchItems.value.filter(i => i.match_status === '未匹配')
+    if (activeTab.value === '已匹配') return batchItems.value.filter(i => i.match_status === '自动匹配' || i.match_status === '手动匹配')
+    if (activeTab.value === '已忽略') return batchItems.value.filter(i => i.match_status === '已忽略')
+    return batchItems.value
 })
 
 // --- Step 1: 文件上传与解析 ---
@@ -98,7 +111,9 @@ const processFile = async (file: File) => {
                     reagent_name: name.toString().trim(),
                     cas_number: '', // 易派客导出通常没有分离的 CAS 号
                     quantity: parseFloat(row[27]) || 1,
-                    unit: (row[28] || '瓶').toString().trim()
+                    unit: (row[28] || '瓶').toString().trim(),
+                    material_category: row[22] ? row[22].toString().trim() : '',
+                    product_category: row[24] ? row[24].toString().trim() : ''
                 })
             }
 
@@ -126,8 +141,9 @@ const processFile = async (file: File) => {
         batchId.value = res.data.id
         batchItems.value = res.data.items || []
 
-        await fetchCatalogs()
+        await fetchRequests()
         step.value = 'match'
+        activeTab.value = '待处理'
         toast(`成功解析 ${items.length} 条数据，请核对`)
 
     } catch (error) {
@@ -175,18 +191,52 @@ const refreshBatchItems = async () => {
     } catch { /* ignore */ }
 }
 
-// --- Step 2: 手动匹配 ---
-const updateItemMatch = async (item: any, catalogId: number) => {
+// --- Step 2: 手动匹配与忽略 ---
+const updateItemMatch = async (item: any, requestId: number) => {
     try {
         await axios.put(`/api/reagents/procurement-batches/${batchId.value}/items/${item.id}`, {
-            matched_catalog_id: catalogId,
+            matched_request_id: requestId,
             cas_number: item.cas_number
         })
-        item.matched_catalog_id = catalogId
+        item.matched_request_id = requestId
         item.match_status = '手动匹配'
-        toast('匹配成功')
+        toast('认领并关联成功')
     } catch {
-        toast('匹配失败', 'error')
+        toast('认领失败', 'error')
+    }
+}
+
+const ignoreItem = async (item: any) => {
+    try {
+        await axios.put(`/api/reagents/procurement-batches/${batchId.value}/items/${item.id}`, {
+            match_status: '已忽略'
+        })
+        item.match_status = '已忽略'
+        item.matched_catalog_id = null
+        item.matched_request_id = null
+    } catch {
+        toast('忽略失败', 'error')
+    }
+}
+
+const ignoreAllUnmatched = async () => {
+    const unmatchedItems = batchItems.value.filter(i => i.match_status === '未匹配')
+    if (unmatchedItems.length === 0) return
+    
+    try {
+        await Promise.all(unmatchedItems.map(item => 
+            axios.put(`/api/reagents/procurement-batches/${batchId.value}/items/${item.id}`, {
+                match_status: '已忽略'
+            })
+        ))
+        for (const item of unmatchedItems) {
+            item.match_status = '已忽略'
+            item.matched_catalog_id = null
+            item.matched_request_id = null
+        }
+        toast(`已一键将 ${unmatchedItems.length} 项耗材标记为放行忽略`)
+    } catch {
+        toast('一键忽略部分失败', 'error')
     }
 }
 
@@ -294,18 +344,37 @@ const createEmptyBatch = () => {
 
       <!-- Step 2: 明细确认与匹配 -->
       <div v-if="step === 'match'" class="space-y-4">
-        <!-- 统计条 -->
-        <div class="flex items-center gap-4 bg-gray-50 rounded-lg px-4 py-2.5">
-          <span class="text-xs text-gray-600">
-            批次 #{{ batchId }} · 周期 {{ period }}
-          </span>
-          <span class="text-xs font-medium text-emerald-600">
-            ✅ 已匹配 {{ matchStats.matched }}
-          </span>
-          <span v-if="matchStats.unmatched > 0" class="text-xs font-medium text-red-600">
-            ⚠️ 未匹配 {{ matchStats.unmatched }}
-          </span>
-          <span class="text-xs text-gray-500">共 {{ matchStats.total }} 项</span>
+        <!-- 统计条与Tabs -->
+        <div class="flex flex-col gap-2 mb-2">
+          <div class="flex items-center gap-4 bg-gray-50 rounded-lg px-4 py-2.5 border">
+            <span class="text-xs text-gray-600">批次 #{{ batchId }} · 周期 {{ period }}</span>
+            <span class="text-xs font-medium text-emerald-600">✅ 已匹配 {{ matchStats.matched }}</span>
+            <span v-if="matchStats.unmatched > 0" class="text-xs font-medium text-red-600">⚠️ 待处理 {{ matchStats.unmatched }}</span>
+            <span v-if="matchStats.ignored > 0" class="text-xs font-medium text-gray-500">👻 已忽略 {{ matchStats.ignored }}</span>
+            <span class="text-xs text-gray-500 ml-auto">共 {{ matchStats.total }} 项</span>
+          </div>
+          
+          <div class="flex items-center justify-between border-b">
+            <div class="flex gap-4">
+              <button 
+                v-for="tab in ['待处理', '已匹配', '已忽略', '全部']" 
+                :key="tab"
+                @click="activeTab = tab as any"
+                :class="[ 'px-2 py-2 text-sm font-medium border-b-2 transition-colors', activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' ]"
+              >
+                {{ tab }}
+                <span v-if="tab === '待处理'" class="ml-1 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">{{ matchStats.unmatched }}</span>
+              </button>
+            </div>
+            
+            <Button 
+                v-if="activeTab === '待处理' && matchStats.unmatched > 0"
+                size="sm" variant="outline" class="h-7 text-xs text-gray-600 font-medium border-red-200 hover:bg-red-50 hover:text-red-600 transition"
+                @click="ignoreAllUnmatched"
+            >
+              🧹一键忽略全部待处理杂项
+            </Button>
+          </div>
         </div>
 
         <!-- 手动添加行 -->
@@ -340,7 +409,7 @@ const createEmptyBatch = () => {
               </tr>
             </thead>
             <tbody class="divide-y">
-              <tr v-for="item in batchItems" :key="item.id" :class="item.match_status === '未匹配' ? 'bg-red-50/50' : ''">
+              <tr v-for="item in filteredItems" :key="item.id" :class="[item.match_status === '未匹配' ? 'bg-red-50/50' : '', item.match_status === '已忽略' ? 'opacity-60 bg-gray-50' : '']">
                 <td class="px-3 py-2 text-gray-900">{{ item.reagent_name }}</td>
                 <td class="px-3 py-2 font-mono text-gray-500">{{ item.cas_number || '-' }}</td>
                 <td class="px-3 py-2 text-center">{{ item.quantity }} {{ item.unit }}</td>
@@ -349,32 +418,40 @@ const createEmptyBatch = () => {
                     'inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full font-medium',
                     item.match_status === '自动匹配' ? 'bg-green-100 text-green-700' :
                     item.match_status === '手动匹配' ? 'bg-blue-100 text-blue-700' :
+                    item.match_status === '已忽略' ? 'bg-gray-200 text-gray-600' :
                     'bg-red-100 text-red-700'
                   ]">
-                    <CheckCircle2 v-if="item.match_status !== '未匹配'" class="w-3 h-3" />
+                    <CheckCircle2 v-if="item.match_status === '自动匹配' || item.match_status === '手动匹配'" class="w-3 h-3" />
                     <AlertCircle v-else class="w-3 h-3" />
                     {{ item.match_status }}
                   </span>
                 </td>
-                <td class="px-3 py-2">
-                  <select
-                    v-if="item.match_status === '未匹配'"
-                    @change="updateItemMatch(item, Number(($event.target as HTMLSelectElement).value))"
-                    class="w-full text-xs border rounded px-1.5 py-1 bg-white"
-                  >
-                    <option value="">选择品目...</option>
-                    <option v-for="cat in catalogs" :key="cat.id" :value="cat.id">
-                      {{ cat.name }} ({{ cat.cas_number }})
-                    </option>
-                  </select>
-                  <span v-else class="text-gray-500">
-                    ID: {{ item.matched_catalog_id }}
+                <td class="px-3 py-2 min-w-48">
+                  <div v-if="item.match_status === '未匹配'" class="flex flex-col gap-1.5">
+                    <select
+                      v-if="requests.length > 0"
+                      @change="updateItemMatch(item, Number(($event.target as HTMLSelectElement).value))"
+                      class="w-full text-xs border rounded px-1.5 py-1 bg-white focus:ring-1 focus:ring-blue-500"
+                    >
+                      <option value="">分配给申购需求...</option>
+                      <option v-for="req in requests" :key="req.id" :value="req.id">
+                        {{ req.requestor?.real_name }} - {{ req.reagent_catalog?.name }} (需{{ req.quantity }}瓶)
+                      </option>
+                    </select>
+                    <div v-else class="text-xs text-red-500 flex items-center mb-1">当前暂无「待采购」申购记录</div>
+                    <button @click="ignoreItem(item)" class="text-[10px] text-gray-400 hover:text-red-500 self-start transition underline decoration-dashed">直接忽略 (非试剂)</button>
+                  </div>
+                  <span v-else-if="item.match_status !== '已忽略'" class="text-gray-500 text-xs">
+                    <span v-if="item.matched_request_id">已关联申购 #{{ item.matched_request_id }}</span>
+                    <span v-else-if="item.matched_catalog_id">关联品目字典 ID: {{ item.matched_catalog_id }}</span>
+                    <span v-else>系统指派</span>
                   </span>
+                  <span v-else class="text-[10px] text-gray-400 border border-gray-200 px-1 py-0.5 rounded bg-gray-100">🚫 无视通过</span>
                 </td>
               </tr>
-              <tr v-if="batchItems.length === 0">
+              <tr v-if="filteredItems.length === 0">
                 <td colspan="5" class="px-3 py-8 text-center text-gray-400">
-                  暂无明细，请通过上方"追加"按钮手动添加
+                  当前视图暂无明细记录
                 </td>
               </tr>
             </tbody>
@@ -389,11 +466,12 @@ const createEmptyBatch = () => {
           <Button
             size="sm"
             class="bg-emerald-600 hover:bg-emerald-700 text-white"
-            :disabled="isConfirming || matchStats.matched === 0"
+            :disabled="isConfirming || matchStats.unmatched > 0"
             @click="confirmBatch"
           >
             <Loader2 v-if="isConfirming" class="w-3.5 h-3.5 animate-spin mr-1" />
-            确认到货并赋码 ({{ matchStats.matched }} 项)
+            <span v-if="matchStats.unmatched > 0">待处理完毕后方可赋码</span>
+            <span v-else>确认到货并赋码入库 ({{ matchStats.matched }}项)</span>
           </Button>
         </div>
       </div>

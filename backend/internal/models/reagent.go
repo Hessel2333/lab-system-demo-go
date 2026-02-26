@@ -142,12 +142,14 @@ type ProcurementBatchItem struct {
 	BatchID uint `json:"batch_id"`
 
 	// 原始 Excel 数据
-	ReagentName string  `json:"reagent_name"` // Excel 中的商品名称
-	CASNumber   string  `json:"cas_number"`   // 解析出的 CAS 号
-	Quantity    int     `json:"quantity"`
-	Unit        string  `json:"unit"`
-	UnitPrice   float64 `json:"unit_price"`
-	Supplier    string  `json:"supplier"` // 供应商（来自 Excel）
+	ReagentName      string  `json:"reagent_name"` // Excel 中的商品名称
+	CASNumber        string  `json:"cas_number"`   // 解析出的 CAS 号
+	Quantity         int     `json:"quantity"`
+	Unit             string  `json:"unit"`
+	UnitPrice        float64 `json:"unit_price"`
+	Supplier         string  `json:"supplier"`          // 供应商（来自 Excel）
+	MaterialCategory string  `json:"material_category"` // 物资类别
+	ProductCategory  string  `json:"product_category"`  // 商品类别
 
 	// 匹配结果
 	MatchedCatalogID *uint  `json:"matched_catalog_id"` // 匹配到的品目 ID

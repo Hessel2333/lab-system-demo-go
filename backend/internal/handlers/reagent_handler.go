@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"lab-system-backend/internal/database"
@@ -786,30 +787,42 @@ func CreateProcurementBatch(c *gin.Context) {
 		item.BatchID = batch.ID
 		item.MatchStatus = "未匹配"
 
-		// 尝试 CAS 号精确匹配
-		if item.CASNumber != "" {
-			var catalog models.ReagentCatalog
-			if err := database.DB.Where("cas_number = ?", item.CASNumber).First(&catalog).Error; err == nil {
-				item.MatchedCatalogID = &catalog.ID
-				item.MatchStatus = "自动匹配"
+		// 自动忽略非试剂及非化工类材料
+		if item.MaterialCategory != "" && item.MaterialCategory != "化工" && !strings.Contains(item.ProductCategory, "试剂") {
+			item.MatchStatus = "已忽略"
+		} else {
+			// 尝试 CAS 号精确匹配
+			if item.CASNumber != "" {
+				var catalog models.ReagentCatalog
+				if err := database.DB.Where("cas_number = ?", item.CASNumber).First(&catalog).Error; err == nil {
+					item.MatchedCatalogID = &catalog.ID
+					item.MatchStatus = "自动匹配"
 
-				// 进一步尝试匹配到最近的待采购申购单
-				var request models.ReagentRequest
-				if err := database.DB.Where("reagent_catalog_id = ? AND status = ?", catalog.ID, "采购中").
-					Order("created_at DESC").First(&request).Error; err == nil {
-					item.MatchedRequestID = &request.ID
+					// 进一步尝试匹配到最近的待采购申购单
+					var request models.ReagentRequest
+					if err := database.DB.Where("reagent_catalog_id = ? AND status = ?", catalog.ID, "待采购").
+						Order("created_at DESC").First(&request).Error; err == nil {
+						item.MatchedRequestID = &request.ID
+					}
 				}
 			}
-		}
 
-		// 如果 CAS 匹配失败，尝试名称模糊匹配
-		if item.MatchStatus == "未匹配" && item.ReagentName != "" {
-			var catalog models.ReagentCatalog
-			if err := database.DB.Where("name LIKE ? OR aliases LIKE ?",
-				"%"+item.ReagentName+"%", "%"+item.ReagentName+"%").
-				First(&catalog).Error; err == nil {
-				item.MatchedCatalogID = &catalog.ID
-				item.MatchStatus = "自动匹配"
+			// 如果 CAS 匹配失败，尝试名称模糊匹配
+			if item.MatchStatus == "未匹配" && item.ReagentName != "" {
+				var catalog models.ReagentCatalog
+				if err := database.DB.Where("name LIKE ? OR aliases LIKE ?",
+					"%"+item.ReagentName+"%", "%"+item.ReagentName+"%").
+					First(&catalog).Error; err == nil {
+					item.MatchedCatalogID = &catalog.ID
+					item.MatchStatus = "自动匹配"
+
+					// 模糊匹配成功的，也尝试找一下申购单
+					var request models.ReagentRequest
+					if err := database.DB.Where("reagent_catalog_id = ? AND status = ?", catalog.ID, "待采购").
+						Order("created_at DESC").First(&request).Error; err == nil {
+						item.MatchedRequestID = &request.ID
+					}
+				}
 			}
 		}
 
@@ -849,18 +862,34 @@ func UpdateProcurementBatchItem(c *gin.Context) {
 		MatchedCatalogID *uint  `json:"matched_catalog_id"`
 		MatchedRequestID *uint  `json:"matched_request_id"`
 		CASNumber        string `json:"cas_number"`
+		MatchStatus      string `json:"match_status"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	item.MatchedCatalogID = body.MatchedCatalogID
-	item.MatchedRequestID = body.MatchedRequestID
-	if body.CASNumber != "" {
-		item.CASNumber = body.CASNumber
+	if body.MatchStatus == "已忽略" {
+		item.MatchStatus = "已忽略"
+		item.MatchedCatalogID = nil
+		item.MatchedRequestID = nil
+	} else {
+		item.MatchedRequestID = body.MatchedRequestID
+		item.MatchedCatalogID = body.MatchedCatalogID
+
+		// 若提供了申购单但没提供品目，自动回填品目
+		if item.MatchedRequestID != nil && item.MatchedCatalogID == nil {
+			var req models.ReagentRequest
+			if err := database.DB.First(&req, *item.MatchedRequestID).Error; err == nil {
+				item.MatchedCatalogID = &req.ReagentCatalogID
+			}
+		}
+
+		if body.CASNumber != "" {
+			item.CASNumber = body.CASNumber
+		}
+		item.MatchStatus = "手动匹配"
 	}
-	item.MatchStatus = "手动匹配"
 
 	database.DB.Save(&item)
 	c.JSON(http.StatusOK, item)
