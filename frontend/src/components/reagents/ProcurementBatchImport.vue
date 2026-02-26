@@ -4,6 +4,7 @@ import { Upload, CheckCircle2, AlertCircle, Loader2 } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
 import axios from 'axios'
+import * as XLSX from 'xlsx'
 
 // --- 状态管理 ---
 const step = ref<'upload' | 'match' | 'done'>('upload')
@@ -65,18 +66,50 @@ const processFile = async (file: File) => {
 
     isUploading.value = true
     try {
-        // 前端解析 Excel（使用简化方式：将文件内容以 FormData 上传到一个解析接口）
-        // 为 MVP 版本，我们将模拟前端解析 → 生成 JSON → 发送到后端
-        // 后续可替换为真正的 xlsx 库解析
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('period', period.value)
+        let items: any[] = []
 
-        // 使用 POST 上传一个 JSON body 作为模拟（实际需要 Excel 解析库）
-        // 暂时先让后端创建批次，前端手动添加项目
+        if (file.size > 0) {
+            //真实解析 Excel
+            const buffer = await file.arrayBuffer()
+            const workbook = XLSX.read(buffer, { type: 'array' })
+            const firstSheetName = workbook.SheetNames[0]
+            if (!firstSheetName) {
+                throw new Error("Excel 文件中没有任何工作表")
+            }
+            const worksheet = workbook.Sheets[firstSheetName]
+            if (!worksheet) {
+                throw new Error("无法读取第一个工作表")
+            }
+            // header: 1 表示返回二维数组
+            const rawData = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 })
+            
+            // 易派客通常第二行(index 1)或第一行是实际表头，这里我们从第3行(index 2)开始往下扫
+            // "商品名称" 在第24列(index 23), "采购数量" 在第28列(index 27), "基本计量单位" 在第29列(index 28)
+            for (let i = 2; i < rawData.length; i++) {
+                const row = rawData[i]
+                if (!row || row.length < 28) continue
+                const name = row[23]
+                if (!name || name === '商品名称') continue // 跳过空行或表头本身
+                
+                items.push({
+                    reagent_name: name.toString().trim(),
+                    cas_number: '', // 易派客导出通常没有分离的 CAS 号
+                    quantity: parseFloat(row[27]) || 1,
+                    unit: (row[28] || '瓶').toString().trim()
+                })
+            }
+
+            if (items.length === 0) {
+                toast('未能在 Excel 中解析到有效试剂明细数据', 'error')
+                isUploading.value = false
+                return
+            }
+        }
+
+        // 发送真实解析到的 items 到后端创建批次
         const res = await axios.post('/api/reagents/procurement-batches', {
             period: period.value,
-            items: [] // 空的，后续可用 SheetJS 解析
+            items: items
         })
 
         batchId.value = res.data.id
@@ -84,7 +117,7 @@ const processFile = async (file: File) => {
 
         await fetchCatalogs()
         step.value = 'match'
-        toast(`批次创建成功，请核对明细`)
+        toast(`成功解析 ${items.length} 条数据，请核对`)
 
     } catch (error) {
         toast('文件处理失败，请重试', 'error')
