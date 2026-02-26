@@ -15,6 +15,7 @@ const isConfirming = ref(false)
 const batchId = ref<number | null>(null)
 const batchItems = ref<any[]>([])
 const requests = ref<any[]>([])
+const users = ref<any[]>([])
 
 // 为了 UI 区分标签页
 const activeTab = ref<'待处理' | '已匹配' | '已忽略' | '全部'>('待处理')
@@ -33,8 +34,15 @@ const toast = (msg: string, type: 'success' | 'error' = 'success') => {
 const fetchRequests = async () => {
     try {
         const res = await axios.get('/api/reagents/requests')
-        // 筛选出待采购的申购单，准备被派库
         requests.value = res.data.filter((r: any) => r.status === '待采购')
+    } catch { /* ignore */ }
+}
+
+// 加载可指派的人员列表
+const fetchUsers = async () => {
+    try {
+        const res = await axios.get('/api/users')
+        users.value = res.data
     } catch { /* ignore */ }
 }
 
@@ -76,6 +84,7 @@ const processFile = async (file: File) => {
     try {
         let items: any[] = []
         let autoPeriod = ''
+        let orderNumber = ''
 
         if (file.size > 0) {
             //真实解析 Excel
@@ -100,6 +109,11 @@ const processFile = async (file: File) => {
                 const name = row[23]
                 if (!name || name === '商品名称') continue // 跳过空行或表头本身
                 
+                // 订单编号 (从“订单编号”第 1 列)
+                if (!orderNumber && row[0]) {
+                    orderNumber = String(row[0]).trim()
+                }
+
                 // 自动尝试提取周期 (从“下单时间”第 11 列)
                 if (!autoPeriod && row[10]) {
                     const dateStr = String(row[10]).trim()
@@ -135,6 +149,7 @@ const processFile = async (file: File) => {
         // 发送真实解析到的 items 到后端创建批次
         const res = await axios.post('/api/reagents/procurement-batches', {
             period: period.value,
+            order_number: orderNumber,
             items: items
         })
 
@@ -142,12 +157,17 @@ const processFile = async (file: File) => {
         batchItems.value = res.data.items || []
 
         await fetchRequests()
+        await fetchUsers()
         step.value = 'match'
         activeTab.value = '待处理'
         toast(`成功解析 ${items.length} 条数据，请核对`)
 
-    } catch (error) {
-        toast('文件处理失败，请重试', 'error')
+    } catch (error: any) {
+        if (error.response && error.response.status === 409) {
+            toast(error.response.data.error || '上传重复订单', 'error')
+        } else {
+            toast('文件处理失败，请重试', 'error')
+        }
     } finally {
         isUploading.value = false
     }
@@ -192,13 +212,21 @@ const refreshBatchItems = async () => {
 }
 
 // --- Step 2: 手动匹配与忽略 ---
-const updateItemMatch = async (item: any, requestId: number) => {
+const updateItemMatch = async (item: any, selectedVal: string) => {
+    if (!selectedVal) return
+    const isUser = selectedVal.startsWith('usr_')
+    const id = Number(selectedVal.split('_')[1])
+    const payload = isUser ? { matched_user_id: id, cas_number: item.cas_number } : { matched_request_id: id, cas_number: item.cas_number }
+
     try {
-        await axios.put(`/api/reagents/procurement-batches/${batchId.value}/items/${item.id}`, {
-            matched_request_id: requestId,
-            cas_number: item.cas_number
-        })
-        item.matched_request_id = requestId
+        await axios.put(`/api/reagents/procurement-batches/${batchId.value}/items/${item.id}`, payload)
+        if (isUser) {
+            item.matched_user_id = id
+            item.matched_request_id = null
+        } else {
+            item.matched_request_id = id
+            item.matched_user_id = null
+        }
         item.match_status = '手动匹配'
         toast('认领并关联成功')
     } catch {
@@ -429,19 +457,25 @@ const createEmptyBatch = () => {
                 <td class="px-3 py-2 min-w-56">
                   <div v-if="item.match_status !== '已忽略'" class="flex flex-col gap-1.5">
                     <select
-                      v-if="requests.length > 0"
-                      @change="updateItemMatch(item, Number(($event.target as HTMLSelectElement).value))"
+                      @change="updateItemMatch(item, ($event.target as HTMLSelectElement).value)"
                       class="w-full text-xs border border-gray-300 rounded px-1.5 py-1.5 bg-white focus:ring-1 focus:ring-blue-500"
-                      :value="item.matched_request_id || ''"
+                      :value="item.matched_request_id ? `req_${item.matched_request_id}` : (item.matched_user_id ? `usr_${item.matched_user_id}` : '')"
                     >
-                      <option value="">分配给申购需求...</option>
-                      <option v-for="req in requests" :key="req.id" :value="req.id">
-                        {{ req.requestor?.real_name || '未知' }} - {{ req.reagent_catalog?.name }} (需{{ req.quantity }}瓶)
-                      </option>
+                      <option value="">分配给申购需求 / 指派个人...</option>
+                      <optgroup label="最佳推荐 (现有申购单)">
+                        <option v-for="req in requests" :key="`req_${req.id}`" :value="`req_${req.id}`">
+                          {{ req.requestor?.real_name || '未知' }} - {{ req.reagent_catalog?.name }} (需{{ req.quantity }}瓶)
+                        </option>
+                      </optgroup>
+                      <optgroup label="直接指派 (无申购单直接补录入库)">
+                        <option v-for="user in users" :key="`usr_${user.id}`" :value="`usr_${user.id}`">
+                          指派给：{{ user.real_name }} ({{ user.role === 'admin' ? '系统管理员' : user.role === 'leader' ? '课题组长' : '研发人员' }})
+                        </option>
+                      </optgroup>
                     </select>
-                    <div v-else class="text-xs text-red-500 flex items-center mb-1">当前暂无「待采购」申购记录</div>
+                    
                     <div class="flex items-center justify-between">
-                      <span v-if="item.matched_catalog_id" class="text-[10px] text-emerald-600 font-medium">✨ 系统命中品目 #{{ item.matched_catalog_id }}</span>
+                      <span v-if="item.matched_catalog_id" class="text-[10px] text-emerald-600 font-medium">✨ 系统归属品目 #{{ item.matched_catalog_id }}</span>
                       <span v-else class="text-[10px] text-gray-400">系统尚无分类档案</span>
                       <button v-if="item.match_status === '未匹配'" @click="ignoreItem(item)" class="text-[10px] text-gray-400 hover:text-red-500 transition underline decoration-dashed">直接忽略 (非试剂)</button>
                     </div>

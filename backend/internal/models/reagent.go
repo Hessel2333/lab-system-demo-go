@@ -122,12 +122,13 @@ func (item *ReagentItem) BeforeCreate(tx *gorm.DB) (err error) {
 
 // ProcurementBatch 采购批次（对应一次 Excel 导入）
 type ProcurementBatch struct {
-	ID         uint   `gorm:"primaryKey" json:"id"`
-	UploaderID uint   `json:"uploader_id"`
-	Uploader   User   `gorm:"foreignKey:UploaderID" json:"uploader"`
-	SourceFile string `json:"source_file"` // 上传的原始文件路径
-	Period     string `json:"period"`      // 所属周期，如 "2026-01"
-	Status     string `json:"status"`      // 解析中 / 待确认 / 已确认
+	ID          uint   `gorm:"primaryKey" json:"id"`
+	UploaderID  uint   `json:"uploader_id"`
+	Uploader    User   `gorm:"foreignKey:UploaderID" json:"uploader"`
+	SourceFile  string `json:"source_file"`  // 上传的原始文件路径
+	Period      string `json:"period"`       // 所属周期，如 "2026-01"
+	OrderNumber string `json:"order_number"` // 订单编号，防重入
+	Status      string `json:"status"`       // 解析中 / 待确认 / 已确认
 
 	Items []ProcurementBatchItem `gorm:"foreignKey:BatchID" json:"items"`
 
@@ -154,6 +155,7 @@ type ProcurementBatchItem struct {
 	// 匹配结果
 	MatchedCatalogID *uint  `json:"matched_catalog_id"` // 匹配到的品目 ID
 	MatchedRequestID *uint  `json:"matched_request_id"` // 匹配到的申购单 ID
+	MatchedUserID    *uint  `json:"matched_user_id"`    // 匹配到的直接使用人 ID (无申购单直接发库用)
 	MatchStatus      string `json:"match_status"`       // 自动匹配 / 手动匹配 / 未匹配
 
 	CreatedAt time.Time      `json:"created_at"`

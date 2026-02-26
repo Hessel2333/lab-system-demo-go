@@ -760,8 +760,9 @@ You MUST reply with ONLY a JSON object exactly matching this schema:
 // CreateProcurementBatch 创建新的采购批次（上传 Excel 后调用）
 func CreateProcurementBatch(c *gin.Context) {
 	var input struct {
-		Period string                        `json:"period" binding:"required"`
-		Items  []models.ProcurementBatchItem `json:"items"`
+		Period      string                        `json:"period" binding:"required"`
+		OrderNumber string                        `json:"order_number"`
+		Items       []models.ProcurementBatchItem `json:"items"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -771,10 +772,19 @@ func CreateProcurementBatch(c *gin.Context) {
 	// 从 header 中获取用户 ID（简化版认证）
 	uploaderID, _ := strconv.Atoi(c.GetHeader("X-User-ID"))
 
+	if input.OrderNumber != "" {
+		var existing models.ProcurementBatch
+		if err := database.DB.Where("order_number = ?", input.OrderNumber).First(&existing).Error; err == nil {
+			c.JSON(http.StatusConflict, gin.H{"error": "该易派客订单已导入过，请勿重复操作！"})
+			return
+		}
+	}
+
 	batch := models.ProcurementBatch{
-		UploaderID: uint(uploaderID),
-		Period:     input.Period,
-		Status:     "待确认",
+		UploaderID:  uint(uploaderID),
+		Period:      input.Period,
+		OrderNumber: input.OrderNumber,
+		Status:      "待确认",
 	}
 	if err := database.DB.Create(&batch).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create batch"})
@@ -861,6 +871,7 @@ func UpdateProcurementBatchItem(c *gin.Context) {
 	var body struct {
 		MatchedCatalogID *uint  `json:"matched_catalog_id"`
 		MatchedRequestID *uint  `json:"matched_request_id"`
+		MatchedUserID    *uint  `json:"matched_user_id"`
 		CASNumber        string `json:"cas_number"`
 		MatchStatus      string `json:"match_status"`
 	}
@@ -873,9 +884,11 @@ func UpdateProcurementBatchItem(c *gin.Context) {
 		item.MatchStatus = "已忽略"
 		item.MatchedCatalogID = nil
 		item.MatchedRequestID = nil
+		item.MatchedUserID = nil
 	} else {
 		item.MatchedRequestID = body.MatchedRequestID
 		item.MatchedCatalogID = body.MatchedCatalogID
+		item.MatchedUserID = body.MatchedUserID
 
 		// 若提供了申购单但没提供品目，自动回填品目
 		if item.MatchedRequestID != nil && item.MatchedCatalogID == nil {
@@ -915,6 +928,26 @@ func ConfirmProcurementBatch(c *gin.Context) {
 			continue // 跳过未匹配的行
 		}
 
+		var reqID uint
+		if item.MatchedRequestID != nil {
+			reqID = *item.MatchedRequestID
+		} else if item.MatchedUserID != nil {
+			// 直接指派给某人时，创建代填的紧急申购单闭环
+			now := time.Now()
+			req := models.ReagentRequest{
+				RequestorID:      *item.MatchedUserID,
+				ReagentCatalogID: *item.MatchedCatalogID,
+				Quantity:         item.Quantity,
+				Status:           "已接单",
+				RequestType:      "紧急",
+				Remarks:          "采购批次直指补录",
+				OrderReference:   batch.OrderNumber,
+				ClosedAt:         &now,
+			}
+			database.DB.Create(&req)
+			reqID = req.ID
+		}
+
 		// 为每瓶生成 ReagentItem
 		for q := 0; q < item.Quantity; q++ {
 			reagentItem := models.ReagentItem{
@@ -922,8 +955,8 @@ func ConfirmProcurementBatch(c *gin.Context) {
 				Status:           "已到货",
 				Location:         "分拣区(临时区)",
 			}
-			if item.MatchedRequestID != nil {
-				reagentItem.ReagentRequestID = *item.MatchedRequestID
+			if reqID > 0 {
+				reagentItem.ReagentRequestID = reqID
 			}
 			database.DB.Create(&reagentItem)
 			createdItems++
