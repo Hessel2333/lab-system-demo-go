@@ -930,6 +930,16 @@ func ConfirmProcurementBatch(c *gin.Context) {
 
 		// 移除强制建瓶逻辑，此时只完成批次下单的标记
 		createdItems += item.Quantity
+
+		// 既然已发出采购订单，正式将匹配上的申购需求标为 "已接单"
+		if item.MatchedRequestID != nil {
+			database.DB.Model(&models.ReagentRequest{}).
+				Where("id = ? AND status = ?", *item.MatchedRequestID, "待采购").
+				Updates(map[string]interface{}{
+					"status":          "已接单",
+					"order_reference": batch.OrderNumber,
+				})
+		}
 	}
 
 	batch.Status = "已确认"
