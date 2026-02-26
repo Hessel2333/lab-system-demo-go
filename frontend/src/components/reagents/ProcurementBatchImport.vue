@@ -426,27 +426,27 @@ const createEmptyBatch = () => {
                     {{ item.match_status }}
                   </span>
                 </td>
-                <td class="px-3 py-2 min-w-48">
-                  <div v-if="item.match_status === '未匹配'" class="flex flex-col gap-1.5">
+                <td class="px-3 py-2 min-w-56">
+                  <div v-if="item.match_status !== '已忽略'" class="flex flex-col gap-1.5">
                     <select
                       v-if="requests.length > 0"
                       @change="updateItemMatch(item, Number(($event.target as HTMLSelectElement).value))"
-                      class="w-full text-xs border rounded px-1.5 py-1 bg-white focus:ring-1 focus:ring-blue-500"
+                      class="w-full text-xs border border-gray-300 rounded px-1.5 py-1.5 bg-white focus:ring-1 focus:ring-blue-500"
+                      :value="item.matched_request_id || ''"
                     >
                       <option value="">分配给申购需求...</option>
                       <option v-for="req in requests" :key="req.id" :value="req.id">
-                        {{ req.requestor?.real_name }} - {{ req.reagent_catalog?.name }} (需{{ req.quantity }}瓶)
+                        {{ req.requestor?.real_name || '未知' }} - {{ req.reagent_catalog?.name }} (需{{ req.quantity }}瓶)
                       </option>
                     </select>
                     <div v-else class="text-xs text-red-500 flex items-center mb-1">当前暂无「待采购」申购记录</div>
-                    <button @click="ignoreItem(item)" class="text-[10px] text-gray-400 hover:text-red-500 self-start transition underline decoration-dashed">直接忽略 (非试剂)</button>
+                    <div class="flex items-center justify-between">
+                      <span v-if="item.matched_catalog_id" class="text-[10px] text-emerald-600 font-medium">✨ 系统命中品目 #{{ item.matched_catalog_id }}</span>
+                      <span v-else class="text-[10px] text-gray-400">系统尚无分类档案</span>
+                      <button v-if="item.match_status === '未匹配'" @click="ignoreItem(item)" class="text-[10px] text-gray-400 hover:text-red-500 transition underline decoration-dashed">直接忽略 (非试剂)</button>
+                    </div>
                   </div>
-                  <span v-else-if="item.match_status !== '已忽略'" class="text-gray-500 text-xs">
-                    <span v-if="item.matched_request_id">已关联申购 #{{ item.matched_request_id }}</span>
-                    <span v-else-if="item.matched_catalog_id">关联品目字典 ID: {{ item.matched_catalog_id }}</span>
-                    <span v-else>系统指派</span>
-                  </span>
-                  <span v-else class="text-[10px] text-gray-400 border border-gray-200 px-1 py-0.5 rounded bg-gray-100">🚫 无视通过</span>
+                  <span v-else class="text-[10px] text-gray-400 border border-gray-200 px-1 py-0.5 rounded bg-gray-100 inline-block">🚫 无视通过 (不入库)</span>
                 </td>
               </tr>
               <tr v-if="filteredItems.length === 0">
@@ -466,12 +466,12 @@ const createEmptyBatch = () => {
           <Button
             size="sm"
             class="bg-emerald-600 hover:bg-emerald-700 text-white"
-            :disabled="isConfirming || matchStats.unmatched > 0"
+            :disabled="isConfirming || matchStats.matched === 0"
             @click="confirmBatch"
           >
             <Loader2 v-if="isConfirming" class="w-3.5 h-3.5 animate-spin mr-1" />
-            <span v-if="matchStats.unmatched > 0">待处理完毕后方可赋码</span>
-            <span v-else>确认到货并赋码入库 ({{ matchStats.matched }}项)</span>
+            <span v-if="matchStats.unmatched > 0">忽略其余杂项，仅赋码这 {{ matchStats.matched }} 项</span>
+            <span v-else>确认入库 ({{ matchStats.matched }}项)</span>
           </Button>
         </div>
       </div>
