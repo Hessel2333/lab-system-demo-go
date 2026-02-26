@@ -14811,3 +14811,346 @@ Please check https://github.com/gin-gonic/gin/blob/master/docs/doc.md#dont-trust
 2026/02/26 10:09:58 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
 [1.367ms] [rows:23] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`deleted_at` IS NULL
 [GIN] 2026/02/26 - 10:09:58 | 200 |    1.726042ms |             ::1 | GET      "/api/reagents/requests"
+
+2026/02/26 10:10:03 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:984
+[4.415ms] [rows:0] SELECT * FROM `reagent_dispense_requests` WHERE requester_id = "" AND `reagent_dispense_requests`.`deleted_at` IS NULL ORDER BY created_at DESC
+[GIN] 2026/02/26 - 10:10:03 | 200 |    4.762708ms |             ::1 | GET      "/api/reagents/dispense-requests?role=researcher"
+
+2026/02/26 10:10:05 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[0.567ms] [rows:8] SELECT * FROM `reagent_cabinets` WHERE `reagent_cabinets`.`id` IN (13,19,20,21,22,14,15,16) AND `reagent_cabinets`.`deleted_at` IS NULL
+
+2026/02/26 10:10:05 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[0.751ms] [rows:8] SELECT * FROM `reagent_cabinets` WHERE `reagent_cabinets`.`id` IN (19,16,22,21,20,15,14,13) AND `reagent_cabinets`.`deleted_at` IS NULL
+
+2026/02/26 10:10:05 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[0.730ms] [rows:12] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` IN (22,23,26,24,25,27,28,31,30,32,33,29) AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:10:05 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[0.731ms] [rows:12] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` IN (22,24,29,33,23,32,30,31,28,27,25,26) AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:10:05 
+[0.340ms] [rows:5] SELECT * FROM `users` WHERE `users`.`id` IN (21,26,30,34,1) AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:10:05 
+[0.132ms] [rows:4] SELECT * FROM `departments` WHERE `departments`.`id` IN (8,9,10,11) AND `departments`.`deleted_at` IS NULL
+
+2026/02/26 10:10:05 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[2.836ms] [rows:16] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`id` IN (63,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44) AND `reagent_requests`.`deleted_at` IS NULL
+
+2026/02/26 10:10:05 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[7.197ms] [rows:48] SELECT * FROM `reagent_items` WHERE `reagent_items`.`deleted_at` IS NULL ORDER BY created_at DESC
+
+2026/02/26 10:10:05 
+[0.707ms] [rows:5] SELECT * FROM `users` WHERE `users`.`id` IN (21,26,30,34,1) AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:10:05 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[3.783ms] [rows:15] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`id` IN (44,45,46,47,48,49,50,51,52,53,54,55,56,57,63) AND `reagent_requests`.`deleted_at` IS NULL
+
+2026/02/26 10:10:05 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[7.444ms] [rows:46] SELECT * FROM `reagent_items` WHERE reagent_items.status = "在库" AND `reagent_items`.`deleted_at` IS NULL
+[GIN] 2026/02/26 - 10:10:05 | 200 |    9.010209ms |             ::1 | GET      "/api/reagents/items"
+[GIN] 2026/02/26 - 10:10:05 | 200 |    9.086459ms |             ::1 | GET      "/api/reagents/team-inventory"
+
+2026/02/26 10:10:06 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
+[0.657ms] [rows:14] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` IN (22,23,26,24,25,27,28,31,30,32,33,29,34,35) AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:10:06 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
+[0.179ms] [rows:5] SELECT * FROM `users` WHERE `users`.`id` IN (21,26,30,34,1) AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:10:06 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
+[2.021ms] [rows:23] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`deleted_at` IS NULL
+[GIN] 2026/02/26 - 10:10:06 | 200 |    2.394667ms |             ::1 | GET      "/api/reagents/requests"
+
+2026/02/26 10:10:09 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
+[1.044ms] [rows:14] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` IN (22,23,26,24,25,27,28,31,30,32,33,29,34,35) AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:10:09 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
+[0.350ms] [rows:5] SELECT * FROM `users` WHERE `users`.`id` IN (21,26,30,34,1) AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:10:09 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
+[3.735ms] [rows:23] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`deleted_at` IS NULL
+[GIN] 2026/02/26 - 10:10:09 | 200 |    4.109458ms |             ::1 | GET      "/api/reagents/requests"
+
+2026/02/26 10:10:09 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[0.291ms] [rows:8] SELECT * FROM `reagent_cabinets` WHERE `reagent_cabinets`.`id` IN (19,16,22,21,20,15,14,13) AND `reagent_cabinets`.`deleted_at` IS NULL
+
+2026/02/26 10:10:09 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[0.441ms] [rows:8] SELECT * FROM `reagent_cabinets` WHERE `reagent_cabinets`.`id` IN (13,19,20,21,22,14,15,16) AND `reagent_cabinets`.`deleted_at` IS NULL
+
+2026/02/26 10:10:09 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[0.432ms] [rows:12] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` IN (22,23,26,24,25,27,28,31,30,32,33,29) AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:10:09 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[0.476ms] [rows:12] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` IN (22,24,29,33,23,32,30,31,28,27,25,26) AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:10:09 
+[0.252ms] [rows:5] SELECT * FROM `users` WHERE `users`.`id` IN (21,26,30,34,1) AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:10:09 
+[0.122ms] [rows:4] SELECT * FROM `departments` WHERE `departments`.`id` IN (8,9,10,11) AND `departments`.`deleted_at` IS NULL
+
+2026/02/26 10:10:09 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[1.338ms] [rows:16] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`id` IN (63,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44) AND `reagent_requests`.`deleted_at` IS NULL
+
+2026/02/26 10:10:09 
+[0.679ms] [rows:5] SELECT * FROM `users` WHERE `users`.`id` IN (21,26,30,34,1) AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:10:09 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[5.352ms] [rows:48] SELECT * FROM `reagent_items` WHERE `reagent_items`.`deleted_at` IS NULL ORDER BY created_at DESC
+
+2026/02/26 10:10:09 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[2.092ms] [rows:15] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`id` IN (44,45,46,47,48,49,50,51,52,53,54,55,56,57,63) AND `reagent_requests`.`deleted_at` IS NULL
+
+2026/02/26 10:10:09 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[5.353ms] [rows:46] SELECT * FROM `reagent_items` WHERE reagent_items.status = "在库" AND `reagent_items`.`deleted_at` IS NULL
+[GIN] 2026/02/26 - 10:10:09 | 200 |    6.559667ms |             ::1 | GET      "/api/reagents/team-inventory"
+[GIN] 2026/02/26 - 10:10:09 | 200 |    6.812334ms |             ::1 | GET      "/api/reagents/items"
+
+2026/02/26 10:10:48 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
+[0.822ms] [rows:14] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` IN (22,23,26,24,25,27,28,31,30,32,33,29,34,35) AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:10:48 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
+[0.209ms] [rows:5] SELECT * FROM `users` WHERE `users`.`id` IN (21,26,30,34,1) AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:10:48 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
+[3.805ms] [rows:23] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`deleted_at` IS NULL
+[GIN] 2026/02/26 - 10:10:48 | 200 |    4.887625ms |             ::1 | GET      "/api/reagents/requests"
+
+2026/02/26 10:10:49 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:984
+[0.457ms] [rows:0] SELECT * FROM `reagent_dispense_requests` WHERE requester_id = "" AND `reagent_dispense_requests`.`deleted_at` IS NULL ORDER BY created_at DESC
+[GIN] 2026/02/26 - 10:10:49 | 200 |    1.222583ms |             ::1 | GET      "/api/reagents/dispense-requests?role=researcher"
+
+2026/02/26 10:10:55 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[0.344ms] [rows:8] SELECT * FROM `reagent_cabinets` WHERE `reagent_cabinets`.`id` IN (19,16,22,21,20,15,14,13) AND `reagent_cabinets`.`deleted_at` IS NULL
+
+2026/02/26 10:10:55 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[0.253ms] [rows:8] SELECT * FROM `reagent_cabinets` WHERE `reagent_cabinets`.`id` IN (13,19,20,21,22,14,15,16) AND `reagent_cabinets`.`deleted_at` IS NULL
+
+2026/02/26 10:10:55 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[0.327ms] [rows:12] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` IN (22,24,29,33,23,32,30,31,28,27,25,26) AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:10:55 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[0.328ms] [rows:12] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` IN (22,23,26,24,25,27,28,31,30,32,33,29) AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:10:55 
+[0.109ms] [rows:5] SELECT * FROM `users` WHERE `users`.`id` IN (21,26,30,34,1) AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:10:55 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[0.495ms] [rows:16] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`id` IN (63,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44) AND `reagent_requests`.`deleted_at` IS NULL
+
+2026/02/26 10:10:55 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[6.292ms] [rows:48] SELECT * FROM `reagent_items` WHERE `reagent_items`.`deleted_at` IS NULL ORDER BY created_at DESC
+
+2026/02/26 10:10:55 
+[0.105ms] [rows:4] SELECT * FROM `departments` WHERE `departments`.`id` IN (8,9,10,11) AND `departments`.`deleted_at` IS NULL
+
+2026/02/26 10:10:55 
+[0.303ms] [rows:5] SELECT * FROM `users` WHERE `users`.`id` IN (21,26,30,34,1) AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:10:55 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[0.643ms] [rows:15] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`id` IN (44,45,46,47,48,49,50,51,52,53,54,55,56,57,63) AND `reagent_requests`.`deleted_at` IS NULL
+
+2026/02/26 10:10:55 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[3.328ms] [rows:46] SELECT * FROM `reagent_items` WHERE reagent_items.status = "在库" AND `reagent_items`.`deleted_at` IS NULL
+[GIN] 2026/02/26 - 10:10:55 | 200 |     7.41625ms |             ::1 | GET      "/api/reagents/items"
+[GIN] 2026/02/26 - 10:10:55 | 200 |    4.452875ms |             ::1 | GET      "/api/reagents/team-inventory"
+
+2026/02/26 10:11:00 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:984
+[0.701ms] [rows:0] SELECT * FROM `reagent_dispense_requests` WHERE requester_id = "" AND `reagent_dispense_requests`.`deleted_at` IS NULL ORDER BY created_at DESC
+[GIN] 2026/02/26 - 10:11:00 | 200 |     884.333µs |             ::1 | GET      "/api/reagents/dispense-requests?role=researcher"
+
+2026/02/26 10:11:01 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:984
+[0.923ms] [rows:0] SELECT * FROM `reagent_dispense_requests` WHERE requester_id = "" AND `reagent_dispense_requests`.`deleted_at` IS NULL ORDER BY created_at DESC
+[GIN] 2026/02/26 - 10:11:01 | 200 |     1.19425ms |             ::1 | GET      "/api/reagents/dispense-requests?role=researcher"
+
+2026/02/26 10:11:04 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:50
+[1.889ms] [rows:1] SELECT count(*) FROM `reagent_items` WHERE status != "已耗尽" AND `reagent_items`.`deleted_at` IS NULL
+
+2026/02/26 10:11:04 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:51
+[0.062ms] [rows:1] SELECT count(*) FROM `reagent_items` WHERE status = "在库" AND `reagent_items`.`deleted_at` IS NULL
+
+2026/02/26 10:11:04 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:52
+[0.165ms] [rows:1] SELECT count(*) FROM `reagent_requests` WHERE status = "待处理" AND `reagent_requests`.`deleted_at` IS NULL
+
+2026/02/26 10:11:04 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:73
+[0.936ms] [rows:29] 
+		SELECT c.id, c.name, c.alert_threshold, COUNT(i.uuid) as count
+		FROM reagent_catalogs c
+		LEFT JOIN reagent_items i ON c.id = i.reagent_catalog_id AND i.status != '已耗尽'
+		WHERE c.deleted_at IS NULL
+		GROUP BY c.id, c.name, c.alert_threshold
+		HAVING COUNT(i.uuid) <= c.alert_threshold AND c.alert_threshold > 0
+	
+
+2026/02/26 10:11:04 
+[0.062ms] [rows:1] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` = 22 AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:11:04 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:79
+[0.330ms] [rows:5] SELECT * FROM `reagent_items` WHERE `reagent_items`.`uuid` IN ("177484f4-020a-4b9d-b594-a82771754052","451f6d00-c37f-4985-b850-7292abc9a7b6","2620f990-1e5a-4176-a6b7-8e797d104e4a","05e2c2c8-d8c3-415c-818e-d4272c8ed202","bc6bedcc-dc52-4993-87a0-5c654c625305") AND `reagent_items`.`deleted_at` IS NULL
+
+2026/02/26 10:11:04 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:79
+[0.044ms] [rows:1] SELECT * FROM `users` WHERE `users`.`id` = 1 AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:11:04 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:79
+[0.810ms] [rows:5] SELECT * FROM `reagent_logs` WHERE `reagent_logs`.`deleted_at` IS NULL ORDER BY created_at desc LIMIT 5
+
+2026/02/26 10:11:04 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:93
+[0.072ms] [rows:6] 
+		SELECT c.category, COUNT(i.uuid) as count 
+		FROM reagent_items i 
+		JOIN reagent_catalogs c ON i.reagent_catalog_id = c.id 
+		WHERE i.status != '已耗尽' 
+		GROUP BY c.category
+	
+
+2026/02/26 10:11:04 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:109
+[0.961ms] [rows:1] 
+		SELECT strftime('%Y-%m-%d', created_at) as date, COUNT(*) as count
+		FROM reagent_logs 
+		WHERE action = '空瓶核销' AND created_at >= date('now', '-7 days')
+		GROUP BY date
+		ORDER BY date ASC
+	
+[GIN] 2026/02/26 - 10:11:04 | 200 |    6.827541ms |             ::1 | GET      "/api/reagents/stats"
+
+2026/02/26 10:11:08 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[0.481ms] [rows:8] SELECT * FROM `reagent_cabinets` WHERE `reagent_cabinets`.`id` IN (13,19,20,21,22,14,15,16) AND `reagent_cabinets`.`deleted_at` IS NULL
+
+2026/02/26 10:11:08 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[0.510ms] [rows:8] SELECT * FROM `reagent_cabinets` WHERE `reagent_cabinets`.`id` IN (19,16,22,21,20,15,14,13) AND `reagent_cabinets`.`deleted_at` IS NULL
+
+2026/02/26 10:11:08 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[0.459ms] [rows:12] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` IN (22,24,29,33,23,32,30,31,28,27,25,26) AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:11:08 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[0.488ms] [rows:12] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` IN (22,23,26,24,25,27,28,31,30,32,33,29) AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:11:08 
+[0.177ms] [rows:5] SELECT * FROM `users` WHERE `users`.`id` IN (21,26,30,34,1) AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:11:08 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[2.317ms] [rows:16] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`id` IN (63,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44) AND `reagent_requests`.`deleted_at` IS NULL
+
+2026/02/26 10:11:08 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[7.205ms] [rows:48] SELECT * FROM `reagent_items` WHERE `reagent_items`.`deleted_at` IS NULL ORDER BY created_at DESC
+
+2026/02/26 10:11:08 
+[0.093ms] [rows:4] SELECT * FROM `departments` WHERE `departments`.`id` IN (8,9,10,11) AND `departments`.`deleted_at` IS NULL
+
+2026/02/26 10:11:08 
+[0.362ms] [rows:5] SELECT * FROM `users` WHERE `users`.`id` IN (21,26,30,34,1) AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:11:08 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[1.319ms] [rows:15] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`id` IN (44,45,46,47,48,49,50,51,52,53,54,55,56,57,63) AND `reagent_requests`.`deleted_at` IS NULL
+
+2026/02/26 10:11:08 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[7.407ms] [rows:46] SELECT * FROM `reagent_items` WHERE reagent_items.status = "在库" AND `reagent_items`.`deleted_at` IS NULL
+[GIN] 2026/02/26 - 10:11:08 | 200 |   13.032125ms |             ::1 | GET      "/api/reagents/items"
+[GIN] 2026/02/26 - 10:11:08 | 200 |    8.600709ms |             ::1 | GET      "/api/reagents/team-inventory"
+
+2026/02/26 10:11:10 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/cabinet_handler.go:26
+[0.703ms] [rows:10] SELECT * FROM `reagent_cabinets` WHERE `reagent_cabinets`.`deleted_at` IS NULL ORDER BY department_id ASC, name ASC
+[GIN] 2026/02/26 - 10:11:10 | 200 |    2.038334ms |             ::1 | GET      "/api/reagents/cabinets"
+
+2026/02/26 10:11:10 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/organization_handler.go:16
+[0.560ms] [rows:6] SELECT * FROM `departments` WHERE `departments`.`deleted_at` IS NULL
+[GIN] 2026/02/26 - 10:11:10 | 200 |    2.968541ms |             ::1 | GET      "/api/departments"
+
+2026/02/26 10:11:10 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:36
+[2.584ms] [rows:30] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`deleted_at` IS NULL
+[GIN] 2026/02/26 - 10:11:10 | 200 |    2.809625ms |             ::1 | GET      "/api/reagents/catalogs"
+
+2026/02/26 10:11:10 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[0.411ms] [rows:8] SELECT * FROM `reagent_cabinets` WHERE `reagent_cabinets`.`id` IN (19,16,22,21,20,15,14,13) AND `reagent_cabinets`.`deleted_at` IS NULL
+
+2026/02/26 10:11:10 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[0.833ms] [rows:12] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` IN (22,24,29,33,23,32,30,31,28,27,25,26) AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:11:10 
+[0.175ms] [rows:5] SELECT * FROM `users` WHERE `users`.`id` IN (21,26,30,34,1) AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:11:10 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[1.052ms] [rows:16] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`id` IN (63,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44) AND `reagent_requests`.`deleted_at` IS NULL
+
+2026/02/26 10:11:10 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:460
+[6.134ms] [rows:48] SELECT * FROM `reagent_items` WHERE `reagent_items`.`deleted_at` IS NULL ORDER BY created_at DESC
+[GIN] 2026/02/26 - 10:11:10 | 200 |    7.466417ms |             ::1 | GET      "/api/reagents/items"
+
+2026/02/26 10:11:11 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[0.376ms] [rows:8] SELECT * FROM `reagent_cabinets` WHERE `reagent_cabinets`.`id` IN (13,19,20,21,22,14,15,16) AND `reagent_cabinets`.`deleted_at` IS NULL
+
+2026/02/26 10:11:11 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[0.434ms] [rows:12] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` IN (22,23,26,24,25,27,28,31,30,32,33,29) AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:11:11 
+[0.088ms] [rows:4] SELECT * FROM `departments` WHERE `departments`.`id` IN (8,9,10,11) AND `departments`.`deleted_at` IS NULL
+
+2026/02/26 10:11:11 
+[0.422ms] [rows:5] SELECT * FROM `users` WHERE `users`.`id` IN (21,26,30,34,1) AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:11:11 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[0.985ms] [rows:15] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`id` IN (44,45,46,47,48,49,50,51,52,53,54,55,56,57,63) AND `reagent_requests`.`deleted_at` IS NULL
+
+2026/02/26 10:11:11 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:406
+[3.212ms] [rows:46] SELECT * FROM `reagent_items` WHERE reagent_items.status = "在库" AND `reagent_items`.`deleted_at` IS NULL
+[GIN] 2026/02/26 - 10:11:11 | 200 |      4.0365ms |             ::1 | GET      "/api/reagents/team-inventory"
+
+2026/02/26 10:12:49 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:50
+[9.785ms] [rows:1] SELECT count(*) FROM `reagent_items` WHERE status != "已耗尽" AND `reagent_items`.`deleted_at` IS NULL
+
+2026/02/26 10:12:49 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:51
+[3.353ms] [rows:1] SELECT count(*) FROM `reagent_items` WHERE status = "在库" AND `reagent_items`.`deleted_at` IS NULL
+
+2026/02/26 10:12:49 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:52
+[0.174ms] [rows:1] SELECT count(*) FROM `reagent_requests` WHERE status = "待处理" AND `reagent_requests`.`deleted_at` IS NULL
+
+2026/02/26 10:12:49 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:73
+[3.185ms] [rows:29] 
+		SELECT c.id, c.name, c.alert_threshold, COUNT(i.uuid) as count
+		FROM reagent_catalogs c
+		LEFT JOIN reagent_items i ON c.id = i.reagent_catalog_id AND i.status != '已耗尽'
+		WHERE c.deleted_at IS NULL
+		GROUP BY c.id, c.name, c.alert_threshold
+		HAVING COUNT(i.uuid) <= c.alert_threshold AND c.alert_threshold > 0
+	
+
+2026/02/26 10:12:49 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
+[1.997ms] [rows:14] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` IN (22,23,26,24,25,27,28,31,30,32,33,29,34,35) AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:12:49 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
+[1.242ms] [rows:5] SELECT * FROM `users` WHERE `users`.`id` IN (21,26,30,34,1) AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:12:49 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:275
+[30.806ms] [rows:23] SELECT * FROM `reagent_requests` WHERE `reagent_requests`.`deleted_at` IS NULL
+
+2026/02/26 10:12:49 
+[0.037ms] [rows:1] SELECT * FROM `reagent_catalogs` WHERE `reagent_catalogs`.`id` = 22 AND `reagent_catalogs`.`deleted_at` IS NULL
+
+2026/02/26 10:12:49 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:79
+[0.169ms] [rows:5] SELECT * FROM `reagent_items` WHERE `reagent_items`.`uuid` IN ("177484f4-020a-4b9d-b594-a82771754052","451f6d00-c37f-4985-b850-7292abc9a7b6","2620f990-1e5a-4176-a6b7-8e797d104e4a","05e2c2c8-d8c3-415c-818e-d4272c8ed202","bc6bedcc-dc52-4993-87a0-5c654c625305") AND `reagent_items`.`deleted_at` IS NULL
+
+2026/02/26 10:12:49 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:79
+[0.023ms] [rows:1] SELECT * FROM `users` WHERE `users`.`id` = 1 AND `users`.`deleted_at` IS NULL
+
+2026/02/26 10:12:49 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:79
+[2.127ms] [rows:5] SELECT * FROM `reagent_logs` WHERE `reagent_logs`.`deleted_at` IS NULL ORDER BY created_at desc LIMIT 5
+
+2026/02/26 10:12:49 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:93
+[0.055ms] [rows:6] 
+		SELECT c.category, COUNT(i.uuid) as count 
+		FROM reagent_items i 
+		JOIN reagent_catalogs c ON i.reagent_catalog_id = c.id 
+		WHERE i.status != '已耗尽' 
+		GROUP BY c.category
+	
+
+2026/02/26 10:12:49 /Users/tian/Codes/lab-system-demo-go/backend/internal/handlers/reagent_handler.go:109
+[0.890ms] [rows:1] 
+		SELECT strftime('%Y-%m-%d', created_at) as date, COUNT(*) as count
+		FROM reagent_logs 
+		WHERE action = '空瓶核销' AND created_at >= date('now', '-7 days')
+		GROUP BY date
+		ORDER BY date ASC
+	
+[GIN] 2026/02/26 - 10:12:49 | 200 |   36.435958ms |             ::1 | GET      "/api/reagents/stats"
+[GIN] 2026/02/26 - 10:12:49 | 200 |   36.359416ms |             ::1 | GET      "/api/reagents/requests"

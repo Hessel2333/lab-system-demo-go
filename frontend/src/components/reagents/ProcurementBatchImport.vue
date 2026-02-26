@@ -34,7 +34,7 @@ const toast = (msg: string, type: 'success' | 'error' = 'success') => {
 const fetchRequests = async () => {
     try {
         const res = await axios.get('/api/reagents/requests')
-        requests.value = res.data.filter((r: any) => r.status === '待采购')
+        requests.value = res.data.filter((r: any) => ['待采购', '已接单'].includes(r.status))
     } catch { /* ignore */ }
 }
 

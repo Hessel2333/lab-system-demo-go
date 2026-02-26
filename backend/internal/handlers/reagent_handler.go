@@ -808,9 +808,9 @@ func CreateProcurementBatch(c *gin.Context) {
 					item.MatchedCatalogID = &catalog.ID
 					item.MatchStatus = "自动匹配"
 
-					// 进一步尝试匹配到最近的待采购申购单
+					// 进一步尝试匹配到最近的待采购 / 已接单的申购单
 					var request models.ReagentRequest
-					if err := database.DB.Where("reagent_catalog_id = ? AND status = ?", catalog.ID, "待采购").
+					if err := database.DB.Where("reagent_catalog_id = ? AND status IN ?", catalog.ID, []string{"待采购", "已接单"}).
 						Order("created_at DESC").First(&request).Error; err == nil {
 						item.MatchedRequestID = &request.ID
 					}
@@ -828,7 +828,7 @@ func CreateProcurementBatch(c *gin.Context) {
 
 					// 模糊匹配成功的，也尝试找一下申购单
 					var request models.ReagentRequest
-					if err := database.DB.Where("reagent_catalog_id = ? AND status = ?", catalog.ID, "待采购").
+					if err := database.DB.Where("reagent_catalog_id = ? AND status IN ?", catalog.ID, []string{"待采购", "已接单"}).
 						Order("created_at DESC").First(&request).Error; err == nil {
 						item.MatchedRequestID = &request.ID
 					}
@@ -929,16 +929,22 @@ func ConfirmProcurementBatch(c *gin.Context) {
 		}
 
 		var reqID uint
+		now := time.Now()
 		if item.MatchedRequestID != nil {
 			reqID = *item.MatchedRequestID
+			// 闭环原始申购单
+			database.DB.Model(&models.ReagentRequest{}).Where("id = ?", reqID).Updates(map[string]interface{}{
+				"status":          "已入库",
+				"closed_at":       now,
+				"order_reference": batch.OrderNumber,
+			})
 		} else if item.MatchedUserID != nil {
 			// 直接指派给某人时，创建代填的紧急申购单闭环
-			now := time.Now()
 			req := models.ReagentRequest{
 				RequestorID:      *item.MatchedUserID,
 				ReagentCatalogID: *item.MatchedCatalogID,
 				Quantity:         item.Quantity,
-				Status:           "已接单",
+				Status:           "已入库",
 				RequestType:      "紧急",
 				Remarks:          "采购批次直指补录",
 				OrderReference:   batch.OrderNumber,
@@ -952,7 +958,7 @@ func ConfirmProcurementBatch(c *gin.Context) {
 		for q := 0; q < item.Quantity; q++ {
 			reagentItem := models.ReagentItem{
 				ReagentCatalogID: *item.MatchedCatalogID,
-				Status:           "已到货",
+				Status:           "在库",
 				Location:         "分拣区(临时区)",
 			}
 			if reqID > 0 {

@@ -14,7 +14,7 @@ const selectedRequest = ref<any>(null)
 const searchQuery = ref('')
 const statusFilter = ref('全部')
 
-const statusOptions = ['全部', '待审批', '待采购', '已接单', '已驳回']
+const statusOptions = ['全部', '待审批', '待采购', '已接单', '已入库', '已驳回']
 
 const props = defineProps({
     role: { type: String, default: 'researcher' }
@@ -138,7 +138,8 @@ const getStatusColor = (status: string) => {
     const map: Record<string, string> = {
         '待审批': 'bg-orange-100 text-orange-800',
         '待采购': 'bg-blue-100 text-blue-800',
-        '已接单': 'bg-green-100 text-green-800',
+        '已接单': 'bg-indigo-100 text-indigo-800',
+        '已入库': 'bg-green-100 text-green-800',
         '已驳回': 'bg-red-100 text-red-800',
     }
     return map[status] || 'bg-gray-100 text-gray-800'
