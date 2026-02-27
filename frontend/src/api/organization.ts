@@ -15,6 +15,8 @@ export interface User {
     role: string
     department: Department
     department_id: number
+    is_dispense_key_holder_a?: boolean
+    is_dispense_key_holder_b?: boolean
 }
 
 export const fetchDepartments = async (): Promise<Department[]> => {
@@ -46,6 +48,11 @@ export interface InstrumentPermission {
     has_permission: boolean
 }
 
+export interface ReagentPermission {
+    is_dispense_key_holder_a: boolean
+    is_dispense_key_holder_b: boolean
+}
+
 export const fetchUserPermissions = async (userId: number): Promise<InstrumentPermission[]> => {
     return request.get(`/users/${userId}/permissions`) as any
 }
@@ -55,4 +62,12 @@ export const updateUserPermission = async (userId: number, instrumentId: number,
         instrument_id: instrumentId,
         status: status
     })
+}
+
+export const fetchUserReagentPermissions = async (userId: number): Promise<ReagentPermission> => {
+    return request.get(`/users/${userId}/reagent-permissions`) as any
+}
+
+export const updateUserReagentPermissions = async (userId: number, data: ReagentPermission) => {
+    return request.put(`/users/${userId}/reagent-permissions`, data)
 }

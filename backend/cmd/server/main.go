@@ -92,6 +92,8 @@ func main() {
 		// Qualification Routes
 		api.GET("/users/:id/permissions", handlers.GetUserPermissions)
 		api.POST("/users/:id/permissions", handlers.UpdateUserPermission)
+		api.GET("/users/:id/reagent-permissions", handlers.GetUserReagentPermissions)
+		api.PUT("/users/:id/reagent-permissions", handlers.UpdateUserReagentPermissions)
 
 		// Supplier Routes
 		api.GET("/suppliers", handlers.GetSuppliers)
@@ -144,6 +146,7 @@ func main() {
 
 		// 领用审批与双人双锁
 		api.GET("/reagents/dispense-requests", handlers.GetDispenseRequests)
+		api.GET("/reagents/dispense-notifications", handlers.GetDispenseNotifications)
 		api.POST("/reagents/dispense-requests", handlers.CreateDispenseRequest)
 		api.POST("/reagents/dispense-requests/:id/leader-approve", handlers.LeaderApproveDispense)
 		api.POST("/reagents/dispense-requests/:id/key-holder-confirm", handlers.KeyHolderConfirmDispense)

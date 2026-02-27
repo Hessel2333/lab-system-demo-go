@@ -2,10 +2,10 @@
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import Button from '@/components/ui/Button.vue'
-import Card from '@/components/ui/Card.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Input from '@/components/ui/Input.vue'
 import Dialog from '@/components/ui/Dialog.vue'
+import TableSection from '@/components/ui/TableSection.vue'
 import { CheckCircle, Clock, Search, Package, MapPin, User } from 'lucide-vue-next'
 import LedgerTable from './LedgerTable.vue'
 import { toast } from 'vue-sonner'
@@ -163,24 +163,22 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Header -->
-    <div class="flex justify-between items-center">
-      <div>
-        <h2 class="text-lg font-semibold tracking-tight text-gray-900">到货台账</h2>
-        <p class="text-[13px] text-gray-500 mt-0.5">采购视角：执行到货确认、跟踪待入库条目，并推动台账闭环</p>
-      </div>
-      <Button @click="fetchPendingReceives" variant="outline" size="sm">刷新列表</Button>
-    </div>
+    <TableSection
+      title="到货台账"
+      description="采购视角：执行到货确认、跟踪待入库条目，并推动台账闭环"
+    >
+      <template #actions>
+        <Button @click="fetchPendingReceives" variant="outline" size="sm">刷新列表</Button>
+      </template>
 
-    <Card>
-      <div class="p-6 space-y-4">
+      <template #toolbar>
         <!-- Tabs & Toolbar -->
-        <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-          <div class="relative w-72">
+        <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
+          <div class="relative w-full sm:w-80">
               <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
               <Input v-model="searchQuery" class="pl-9" placeholder="搜索试剂名称、批次号、申请单号..." />
           </div>
-          <div class="apple-segmented w-fit">
+          <div class="apple-segmented w-fit sm:ml-auto">
             <button @click="activeTab='receiving'"
               :class="['apple-segmented-btn-icon', activeTab==='receiving' ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']">
               到货确认
@@ -194,11 +192,12 @@ onMounted(() => {
             </button>
           </div>
         </div>
+      </template>
 
         <!-- Tab 1: 待点检验收清单 -->
         <div v-show="activeTab === 'receiving'">
       <div v-if="loading" class="text-center py-10 text-gray-400">正在加载待收货在途清单...</div>
-      <div v-else-if="filteredPendingItems.length === 0" class="text-center py-10 text-gray-400">目前没有待入库或待确认的试剂。</div>
+      <div v-else-if="filteredPendingItems.length === 0" class="apple-table-empty">目前没有待入库或待确认的试剂。</div>
       
       <LedgerTable v-else :columns="receivingColumns">
             <tr v-for="item in filteredPendingItems" :key="item.id" class="bg-white border-b hover:bg-gray-50 group">
@@ -269,7 +268,7 @@ onMounted(() => {
     <!-- Tab 2: 等待入库跟进 -->
     <div v-show="activeTab === 'tracking'">
       <div v-if="loadingTracking" class="text-center py-10 text-gray-400">正在加载待入库台账...</div>
-      <div v-else-if="filteredStockItems.length === 0" class="text-center py-10 text-gray-400">
+      <div v-else-if="filteredStockItems.length === 0" class="apple-table-empty">
         所有已赋码试剂均已入库，暂无需要跟进的条目。
       </div>
       <LedgerTable v-else :columns="trackingColumns">
@@ -346,8 +345,7 @@ onMounted(() => {
             </tr>
       </LedgerTable>
     </div>
-      </div>
-    </Card>
+    </TableSection>
 
     <Dialog :open="labelDialogOpen" size="md" title="到货标签打印" @close="labelDialogOpen = false">
       <div class="space-y-4 p-6">

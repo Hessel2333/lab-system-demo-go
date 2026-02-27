@@ -10,6 +10,7 @@ import {
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Dialog from '@/components/ui/Dialog.vue'
+import TableSection from '@/components/ui/TableSection.vue'
 import ItemLifecycleDialog from '@/components/reagents/ItemLifecycleDialog.vue'
 import { formatAmount, formatNumber, formatRatio, normalizeUnit } from '@/lib/quantity'
 
@@ -277,32 +278,36 @@ const getRemainingColor = (pct: number) => {
         </Button>
     </div>
 
-    <!-- 顶部工具栏 -->
-    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-      <!-- 左侧：搜索框（仅表格视图显示） -->
-      <div v-if="viewMode === 'table'" class="relative w-72">
-        <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-        <input v-model="searchQuery" class="w-full h-9 pl-9 pr-3 text-sm bg-white border border-gray-200 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" placeholder="搜索名称/CAS/库位..." />
-      </div>
-      <div v-else class="text-sm text-gray-500">按团队分组展示，共 {{ allGroups.length }} 个团队</div>
+    <TableSection title="库存台账" description="统一展示团队库存与全库明细，支持试剂消耗登记与耗尽核销">
+      <template #actions>
+        <Button @click="fetchAll" variant="outline" size="sm">刷新台账</Button>
+      </template>
 
-      <!-- 右侧：视图切换 -->
-      <div class="apple-segmented shrink-0">
-        <button @click="viewMode='team'" :class="['apple-segmented-btn', viewMode==='team' ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']">
-          团队台账
-        </button>
-        <button @click="viewMode='table'" :class="['apple-segmented-btn', viewMode==='table' ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']">
-          全库台账
-        </button>
-      </div>
-    </div>
+      <template #toolbar>
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 w-full">
+          <div v-if="viewMode === 'table'" class="relative w-full sm:w-80">
+            <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+            <input v-model="searchQuery" class="w-full h-9 pl-9 pr-3 text-sm bg-white border border-gray-200 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" placeholder="搜索名称/CAS/库位..." />
+          </div>
+          <div v-else class="text-sm text-gray-500">按团队分组展示，共 {{ allGroups.length }} 个团队</div>
+
+          <div class="apple-segmented shrink-0 sm:ml-auto">
+            <button @click="viewMode='team'" :class="['apple-segmented-btn', viewMode==='team' ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']">
+              团队台账
+            </button>
+            <button @click="viewMode='table'" :class="['apple-segmented-btn', viewMode==='table' ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']">
+              全库台账
+            </button>
+          </div>
+        </div>
+      </template>
 
     <!-- ================================ 团队视图 ================================ -->
     <div v-show="viewMode === 'team'">
       <div v-if="isLoadingTeam" class="flex justify-center py-16">
         <Loader2 class="w-8 h-8 animate-spin text-gray-400" />
       </div>
-      <div v-else-if="allGroups.length === 0" class="text-center py-16 text-gray-500">
+      <div v-else-if="allGroups.length === 0" class="apple-table-empty text-gray-500">
         <FlaskConical class="w-12 h-12 mx-auto mb-4 text-gray-300" />
         <p class="text-sm">暂无在库试剂数据</p>
       </div>
@@ -388,14 +393,14 @@ const getRemainingColor = (pct: number) => {
     <!-- ================================ 表格视图 ================================ -->
     <div v-show="viewMode === 'table'">
       <!-- 筛选条 -->
-      <div class="flex flex-wrap gap-2 mb-3">
+      <div class="mb-3 flex w-full flex-wrap gap-2">
         <div class="apple-segmented">
           <button v-for="s in statusOptions" :key="s" @click="setStatusFilter(s)"
             :class="['apple-segmented-btn', statusFilter === s ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']">
             {{ s }}
           </button>
         </div>
-        <div class="apple-segmented">
+        <div class="apple-segmented sm:ml-auto">
           <button v-for="c in cabinetOptions" :key="c" @click="setCabinetFilter(c)"
             :class="['apple-segmented-btn', cabinetFilter === c ? 'apple-segmented-btn-active text-amber-700' : 'apple-segmented-btn-idle']">
             {{ c === '全部' ? '全部柜' : c === '管控柜' ? '⚠️ 管控柜' : c }}
@@ -406,7 +411,7 @@ const getRemainingColor = (pct: number) => {
       <div v-if="isLoadingTable" class="flex justify-center p-8">
         <Loader2 class="h-8 w-8 animate-spin text-gray-400" />
       </div>
-      <div v-else-if="filteredItems.length === 0" class="text-center text-gray-500 py-8">暂无匹配的试剂库存记录。</div>
+      <div v-else-if="filteredItems.length === 0" class="apple-table-empty">暂无匹配的试剂库存记录。</div>
       <div v-else class="apple-table-wrap">
         <table class="w-full text-sm text-left">
           <thead class="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
@@ -486,6 +491,7 @@ const getRemainingColor = (pct: number) => {
         </div>
       </div>
     </div>
+    </TableSection>
 
     <!-- ================================ 领用弹窗 (Standardized) ================================ -->
     <Dialog :open="consumeDialog.isOpen" size="sm" @close="consumeDialog.isOpen = false">

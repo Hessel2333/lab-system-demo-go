@@ -1,40 +1,64 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterView, RouterLink, useRoute } from 'vue-router'
 import {
   BarChart3,
   Brain,
   Settings,
   FlaskConical,
-  Package,
   TestTube,
   Database,
   Atom,
   Menu,
   Box,
   Users,
-  ShoppingBag
+  ShoppingBag,
+  SlidersHorizontal
 } from 'lucide-vue-next'
+import { useSessionStore, type AppRole } from '@/stores/session'
 
 const isSidebarOpen = ref(false)
 const route = useRoute()
+const sessionStore = useSessionStore()
 
-const navigation = [
+const roleOptions: Array<{ value: AppRole; label: string }> = [
+  { value: 'researcher', label: '研发' },
+  { value: 'procurement', label: '采购' },
+  { value: 'leader', label: '负责人' },
+]
+
+const initials = computed(() => sessionStore.currentUserName.slice(0, 2))
+
+interface NavigationItem {
+  name: string
+  href: string
+  icon: any
+  color: string
+  upcoming?: boolean
+}
+
+const stableNavigation: NavigationItem[] = [
   { name: '系统概览', href: '/dashboard', icon: BarChart3, color: 'text-blue-600' },
-  { name: 'AI智能中心', href: '/ai-center', icon: Brain, color: 'text-cyan-600' },
-  { name: '仪器管理', href: '/instruments', icon: Settings, color: 'text-blue-500' },
-  { name: '用户与组织', href: '/users', icon: Users, color: 'text-indigo-600' },
-  { name: '实验管理', href: '/experiments', icon: FlaskConical, color: 'text-orange-600' },
-  { name: '原料管理', href: '/materials', icon: Package, color: 'text-blue-700' },
   { name: '试剂管理', href: '/reagents', icon: TestTube, color: 'text-emerald-600' },
-  { name: '耗材管理', href: '/consumables', icon: Box, color: 'text-purple-600' },
-  { name: '基因库分析', href: '/analysis', icon: Database, color: 'text-pink-600' },
-  { name: '聚合物数据库', href: '/polymer', icon: Atom, color: 'text-indigo-600' },
+  { name: '仪器管理', href: '/instruments', icon: Settings, color: 'text-blue-500' },
+  { name: '供应商管理', href: '/suppliers', icon: ShoppingBag, color: 'text-purple-600' },
+  { name: '用户与组织', href: '/users', icon: Users, color: 'text-indigo-600' },
+  { name: '基础数据', href: '/master-data', icon: SlidersHorizontal, color: 'text-slate-600' },
+]
+
+const upcomingNavigation: NavigationItem[] = [
+  { name: 'AI智能中心', href: '/ai-center', icon: Brain, color: 'text-cyan-600', upcoming: true },
+  { name: '实验管理', href: '/experiments', icon: FlaskConical, color: 'text-orange-600' },
+  { name: '耗材管理', href: '/consumables', icon: Box, color: 'text-purple-600', upcoming: true },
+  { name: '基因库分析', href: '/analysis', icon: Database, color: 'text-pink-600', upcoming: true },
+  { name: '聚合物数据库', href: '/polymer', icon: Atom, color: 'text-indigo-600', upcoming: true },
 ]
 
 const toggleSidebar = () => {
   isSidebarOpen.value = !isSidebarOpen.value
 }
+
+const isActive = (href: string) => route.path.startsWith(href)
 </script>
 
 <template>
@@ -63,45 +87,69 @@ const toggleSidebar = () => {
 
       <!-- Nav -->
       <nav class="flex flex-1 flex-col gap-y-1 px-4 py-6 overflow-y-auto">
+        <div class="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-gray-400">核心模块</div>
         <RouterLink
-          v-for="item in navigation"
+          v-for="item in stableNavigation"
           :key="item.name"
           :to="item.href"
           class="group flex gap-x-3 rounded-xl p-3 text-sm font-semibold leading-6 transition-all duration-200"
           :class="[
-            route.path.startsWith(item.href)
-              ? 'bg-gray-100/80 text-gray-900 shadow-sm' // Active
-              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900', // Inactive
+            isActive(item.href)
+              ? 'bg-gray-100/80 text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
           ]"
           @click="isSidebarOpen = false"
         >
           <component :is="item.icon" class="h-5 w-5 shrink-0 transition-colors" :class="item.color" aria-hidden="true" />
           {{ item.name }}
         </RouterLink>
-        <RouterLink to="/suppliers"
-            class="group flex gap-x-3 rounded-xl p-3 text-sm font-semibold leading-6 transition-all duration-200"
-            :class="[
-              route.path.startsWith('/suppliers')
-                ? 'bg-gray-100/80 text-gray-900 shadow-sm' // Active
-                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900', // Inactive
-            ]"
-            @click="isSidebarOpen = false"
+
+        <div class="my-3 border-t border-gray-100" />
+
+        <div class="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-gray-400">建设中模块</div>
+        <RouterLink
+          v-for="item in upcomingNavigation"
+          :key="item.name"
+          :to="item.href"
+          class="group flex items-center gap-x-3 rounded-xl p-3 text-sm font-semibold leading-6 transition-all duration-200"
+          :class="[
+            isActive(item.href)
+              ? 'bg-gray-100/80 text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700',
+          ]"
+          @click="isSidebarOpen = false"
         >
-            <ShoppingBag class="h-5 w-5 shrink-0 transition-colors text-purple-600" aria-hidden="true" />
-            供应商管理
+          <component :is="item.icon" class="h-5 w-5 shrink-0 transition-colors opacity-80" :class="item.color" aria-hidden="true" />
+          <span>{{ item.name }}</span>
+          <span class="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+            建设中
+          </span>
         </RouterLink>
       </nav>
       
       <!-- Footer User Profile -->
       <div class="border-t border-gray-100/50 p-4">
-         <div class="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors">
+         <div class="flex items-center gap-3 p-2 rounded-xl bg-gray-50/80 border border-gray-100">
             <div class="w-8 h-8 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center border border-gray-200">
-                <span class="text-xs font-bold text-gray-600">AD</span>
+                <span class="text-xs font-bold text-gray-600">{{ initials }}</span>
             </div>
             <div class="text-sm">
-                <p class="font-medium text-gray-900">Admin User</p>
-                <p class="text-xs text-gray-500">Lab Manager</p>
+                <p class="font-medium text-gray-900">{{ sessionStore.currentUserName }}</p>
+                <p class="text-xs text-gray-500">{{ sessionStore.currentUserTitle }}</p>
             </div>
+         </div>
+         <div class="mt-3 apple-segmented w-full justify-between">
+            <button
+              v-for="role in roleOptions"
+              :key="role.value"
+              @click="sessionStore.setRole(role.value)"
+              :class="[
+                'apple-segmented-btn flex-1 text-center',
+                sessionStore.currentRole === role.value ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle'
+              ]"
+            >
+              {{ role.label }}
+            </button>
          </div>
       </div>
     </div>

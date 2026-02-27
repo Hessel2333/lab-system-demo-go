@@ -153,6 +153,9 @@ func GetReagentCatalogs(c *gin.Context) {
 
 // GetReagentDashboardStats returns aggregated metrics and recent logs for the dashboard
 func GetReagentDashboardStats(c *gin.Context) {
+	role := strings.TrimSpace(c.Query("role"))
+	userID := getUserIDOrDefault(c, 1)
+
 	var totalItems int64
 	var inStorageItems int64
 	var pendingRequests int64
@@ -208,8 +211,14 @@ func GetReagentDashboardStats(c *gin.Context) {
 
 	// Get Recent Activity Logs (last 5)
 	var recentLogs []models.ReagentLog
-	database.DB.Preload("User").Preload("ReagentItem.ReagentCatalog").
-		Order("reagent_logs.created_at desc").Limit(5).Find(&recentLogs)
+	recentLogsQuery := database.DB.Preload("User").Preload("ReagentItem.ReagentCatalog")
+	if role == "researcher" {
+		recentLogsQuery = recentLogsQuery.
+			Joins("JOIN reagent_items ri ON ri.uuid = reagent_logs.reagent_item_id").
+			Joins("JOIN reagent_requests rr ON rr.id = ri.reagent_request_id").
+			Where("rr.requestor_id = ?", userID)
+	}
+	recentLogsQuery.Order("reagent_logs.created_at desc").Limit(5).Find(&recentLogs)
 
 	// categoryDistribution for charts
 	type CategoryStat struct {
@@ -241,7 +250,115 @@ func GetReagentDashboardStats(c *gin.Context) {
 		ORDER BY date ASC
 	`).Scan(&trendStats)
 
+	roleFocus := gin.H{}
+	switch role {
+	case "researcher":
+		var myOpenRequests int64
+		var myPendingCheckIn int64
+		var myInStorageItems int64
+		var myPendingDispense int64
+		var myRejectedDispense7d int64
+		var myControlledInStorage int64
+		var myNearExpiry30d int64
+
+		database.DB.Model(&models.ReagentRequest{}).
+			Where("requestor_id = ? AND status IN ?", userID, []string{"待审批", "待采购", "已接单"}).
+			Count(&myOpenRequests)
+		database.DB.Model(&models.ReagentItem{}).
+			Joins("JOIN reagent_requests rr ON rr.id = reagent_items.reagent_request_id").
+			Where("rr.requestor_id = ? AND reagent_items.status = ?", userID, "已到货").
+			Count(&myPendingCheckIn)
+		database.DB.Model(&models.ReagentItem{}).
+			Joins("JOIN reagent_requests rr ON rr.id = reagent_items.reagent_request_id").
+			Where("rr.requestor_id = ? AND reagent_items.status = ?", userID, "在库").
+			Count(&myInStorageItems)
+		database.DB.Model(&models.ReagentDispenseRequest{}).
+			Where("requester_id = ? AND status IN ?", userID, []string{"待审批", "待双签"}).
+			Count(&myPendingDispense)
+		database.DB.Model(&models.ReagentDispenseRequest{}).
+			Where("requester_id = ? AND status = ? AND updated_at >= date('now', '-7 days')", userID, "已驳回").
+			Count(&myRejectedDispense7d)
+		database.DB.Model(&models.ReagentItem{}).
+			Joins("JOIN reagent_requests rr ON rr.id = reagent_items.reagent_request_id").
+			Joins("JOIN reagent_catalogs rc ON rc.id = reagent_items.reagent_catalog_id").
+			Where("rr.requestor_id = ? AND reagent_items.status = ? AND rc.is_controlled = ?", userID, "在库", true).
+			Count(&myControlledInStorage)
+		database.DB.Model(&models.ReagentItem{}).
+			Joins("JOIN reagent_requests rr ON rr.id = reagent_items.reagent_request_id").
+			Where("rr.requestor_id = ? AND reagent_items.status = ? AND reagent_items.expiry_date >= date('now') AND reagent_items.expiry_date <= date('now', '+30 day')", userID, "在库").
+			Count(&myNearExpiry30d)
+
+		roleFocus = gin.H{
+			"my_open_requests":         myOpenRequests,
+			"my_pending_checkin":       myPendingCheckIn,
+			"my_in_storage_items":      myInStorageItems,
+			"my_pending_dispense":      myPendingDispense,
+			"my_rejected_dispense_7d":  myRejectedDispense7d,
+			"my_controlled_in_storage": myControlledInStorage,
+			"my_near_expiry_30d":       myNearExpiry30d,
+		}
+	case "procurement":
+		var pendingProcurementRequests int64
+		var orderedWaitingArrival int64
+		var receivingTodoLines int64
+		var unmatchedImportLines int64
+		var keyHolderTodo int64
+
+		database.DB.Model(&models.ReagentRequest{}).Where("status = ?", "待采购").Count(&pendingProcurementRequests)
+		database.DB.Model(&models.ReagentRequest{}).Where("status = ?", "已接单").Count(&orderedWaitingArrival)
+		database.DB.Model(&models.ProcurementBatchItem{}).
+			Joins("JOIN procurement_batches pb ON pb.id = procurement_batch_items.batch_id").
+			Where("pb.status = ? AND procurement_batch_items.receive_status != ? AND procurement_batch_items.matched_catalog_id IS NOT NULL", "已确认", "已收货").
+			Count(&receivingTodoLines)
+		database.DB.Model(&models.ProcurementBatchItem{}).
+			Joins("JOIN procurement_batches pb ON pb.id = procurement_batch_items.batch_id").
+			Where("pb.status = ? AND (procurement_batch_items.matched_catalog_id IS NULL OR (procurement_batch_items.matched_request_id IS NULL AND procurement_batch_items.matched_user_id IS NULL))", "待确认").
+			Count(&unmatchedImportLines)
+		database.DB.Model(&models.ReagentDispenseRequest{}).
+			Where("status = ? AND ((key_holder_a_id = ? AND key_holder_a_confirmed_at IS NULL) OR (key_holder_b_id = ? AND key_holder_b_confirmed_at IS NULL))", "待双签", userID, userID).
+			Count(&keyHolderTodo)
+
+		roleFocus = gin.H{
+			"pending_procurement_requests": pendingProcurementRequests,
+			"ordered_waiting_arrival":      orderedWaitingArrival,
+			"receiving_todo_lines":         receivingTodoLines,
+			"unmatched_import_lines":       unmatchedImportLines,
+			"pending_checkin_items":        pendingCheckInItems,
+			"key_holder_todo":              keyHolderTodo,
+		}
+	case "leader":
+		var pendingLeaderApprovals int64
+		var pendingDispenseApprovals int64
+		var dualSignInProgress int64
+		var rejectedDispense7d int64
+
+		database.DB.Model(&models.ReagentRequest{}).Where("status = ?", "待审批").Count(&pendingLeaderApprovals)
+		database.DB.Model(&models.ReagentDispenseRequest{}).Where("status = ?", "待审批").Count(&pendingDispenseApprovals)
+		database.DB.Model(&models.ReagentDispenseRequest{}).Where("status = ?", "待双签").Count(&dualSignInProgress)
+		database.DB.Model(&models.ReagentDispenseRequest{}).
+			Where("status = ? AND updated_at >= date('now', '-7 days')", "已驳回").
+			Count(&rejectedDispense7d)
+
+		roleFocus = gin.H{
+			"pending_leader_approvals":   pendingLeaderApprovals,
+			"pending_dispense_approvals": pendingDispenseApprovals,
+			"dual_sign_in_progress":      dualSignInProgress,
+			"rejected_dispense_7d":       rejectedDispense7d,
+			"low_stock_alerts":           lowStockAlerts,
+			"controlled_in_storage":      controlledInStorage,
+		}
+	default:
+		roleFocus = gin.H{
+			"pending_requests":      pendingRequests,
+			"pending_checkin_items": pendingCheckInItems,
+			"pending_receive_lines": pendingReceiveLines,
+			"low_stock_alerts":      lowStockAlerts,
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
+		"role":                  role,
+		"user_id":               userID,
 		"total_items":           totalItems,
 		"in_storage_items":      inStorageItems,
 		"pending_requests":      pendingRequests,
@@ -256,6 +373,7 @@ func GetReagentDashboardStats(c *gin.Context) {
 		"alerts":                stocks,
 		"category_distribution": catStats,
 		"recent_usage_trend":    trendStats,
+		"role_focus":            roleFocus,
 	})
 }
 
@@ -352,16 +470,16 @@ func StockCheck(c *gin.Context) {
 		Where("reagent_catalog_id = ? AND reagent_items.status = ?", catalog.ID, "在库").
 		Count(&inStock)
 
-	// 待到货数量（已批准或采购中的申购单的总瓶数）
+	// 待到货数量（已进入采购流程但尚未完成到货闭环）
 	var pendingArrival int64
 	database.DB.Model(&models.ReagentRequest{}).
-		Where("reagent_catalog_id = ? AND status IN (?, ?)", catalog.ID, "采购中", "已到货").
+		Where("reagent_catalog_id = ? AND status IN ?", catalog.ID, []string{"待采购", "已接单"}).
 		Select("COALESCE(SUM(quantity), 0)").Scan(&pendingArrival)
 
-	// 待审申购数量
+	// 待审申购数量（团队长审批）
 	var pendingRequests int64
 	database.DB.Model(&models.ReagentRequest{}).
-		Where("reagent_catalog_id = ? AND reagent_requests.status = ?", catalog.ID, "待处理").
+		Where("reagent_catalog_id = ? AND reagent_requests.status = ?", catalog.ID, "待审批").
 		Count(&pendingRequests)
 
 	// 最近消耗时间
@@ -432,9 +550,8 @@ func CreateReagentRequest(c *gin.Context) {
 		input.Status = "待采购" // 普通品直达采购员
 	}
 
-	// Assuming RequestorID is passed or retrieved from context (mocking for now)
 	if input.RequestorID == 0 {
-		input.RequestorID = 1 // Default to Admin for demo
+		input.RequestorID = getUserIDOrDefault(c, 1)
 	}
 
 	if err := database.DB.Create(&input).Error; err != nil {
@@ -633,6 +750,7 @@ func GetReagentItemByUUID(c *gin.Context) {
 
 func UpdateReagentItemStatus(c *gin.Context) {
 	uuid := c.Param("uuid")
+	operatorID := getUserIDOrDefault(c, 1)
 	var input struct {
 		Status    string `json:"status"`
 		Location  string `json:"location"`
@@ -706,7 +824,7 @@ func UpdateReagentItemStatus(c *gin.Context) {
 	if action != "变更信息" {
 		log := models.ReagentLog{
 			ReagentItemID: item.UUID,
-			UserID:        1, // Mock User ID
+			UserID:        operatorID,
 			Action:        action,
 			Quantity:      0, // Keeping 0 for simple status updates for now
 			Remarks:       remarks,
@@ -726,6 +844,7 @@ func UpdateReagentItemStatus(c *gin.Context) {
 // CheckInReagentItem 研发扫码后确认入库位置（专用动作，区别于通用状态修改）
 func CheckInReagentItem(c *gin.Context) {
 	uuid := c.Param("uuid")
+	operatorID := getUserIDOrDefault(c, 1)
 	var input struct {
 		LabRoom   string `json:"lab_room"`
 		CabinetID uint   `json:"cabinet_id" binding:"required"`
@@ -774,7 +893,7 @@ func CheckInReagentItem(c *gin.Context) {
 
 	log := models.ReagentLog{
 		ReagentItemID: item.UUID,
-		UserID:        1, // mock user
+		UserID:        operatorID,
 		Action:        "扫码入库",
 		Quantity:      0,
 		Remarks:       fmt.Sprintf("扫码入库至 %s", finalLocation),
@@ -786,6 +905,7 @@ func CheckInReagentItem(c *gin.Context) {
 
 // PrintReagentLabels 批量打印标签（MVP：记录打印日志并返回可打印数据）
 func PrintReagentLabels(c *gin.Context) {
+	operatorID := getUserIDOrDefault(c, 1)
 	var input struct {
 		UUIDs []string `json:"uuids" binding:"required,min=1"`
 	}
@@ -824,7 +944,7 @@ func PrintReagentLabels(c *gin.Context) {
 
 		_ = database.DB.Create(&models.ReagentLog{
 			ReagentItemID: item.UUID,
-			UserID:        1,
+			UserID:        operatorID,
 			Action:        "二维码打印",
 			Quantity:      0,
 			Remarks:       "已生成并打印标签",
@@ -841,6 +961,7 @@ func PrintReagentLabels(c *gin.Context) {
 // ConsumeReagentItem 记录试剂的使用和余量扣减
 func ConsumeReagentItem(c *gin.Context) {
 	uuid := c.Param("uuid")
+	operatorID := getUserIDOrDefault(c, 1)
 	var input struct {
 		ConsumeVolume float64 `json:"consume_volume"`
 		Remarks       string  `json:"remarks"`
@@ -898,7 +1019,7 @@ func ConsumeReagentItem(c *gin.Context) {
 
 	log := models.ReagentLog{
 		ReagentItemID: item.UUID,
-		UserID:        1, // Mock User ID
+		UserID:        operatorID,
 		Action:        action,
 		Quantity:      input.ConsumeVolume,
 		Remarks:       remarks,
@@ -916,6 +1037,7 @@ func ConsumeReagentItem(c *gin.Context) {
 // DepleteReagentItem 统一“耗尽核销”动作（供台账/详情/扫码复用）
 func DepleteReagentItem(c *gin.Context) {
 	uuid := c.Param("uuid")
+	operatorID := getUserIDOrDefault(c, 1)
 	var input struct {
 		Remarks string `json:"remarks"`
 	}
@@ -951,7 +1073,7 @@ func DepleteReagentItem(c *gin.Context) {
 	}
 	log := models.ReagentLog{
 		ReagentItemID: item.UUID,
-		UserID:        1,
+		UserID:        operatorID,
 		Action:        "空瓶核销",
 		Quantity:      consumed,
 		Remarks:       remarks,
@@ -1284,11 +1406,6 @@ func ConfirmProcurementBatch(c *gin.Context) {
 		return
 	}
 
-	if batch.Status != "待确认" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Batch already confirmed"})
-		return
-	}
-
 	createdItems := 0
 	for _, item := range batch.Items {
 		if item.MatchedCatalogID == nil {
@@ -1300,12 +1417,26 @@ func ConfirmProcurementBatch(c *gin.Context) {
 		createdItems += item.Quantity
 	}
 
+	if batch.Status == "已确认" {
+		c.JSON(http.StatusOK, gin.H{
+			"message":           "Batch already confirmed",
+			"items_created":     createdItems,
+			"already_confirmed": true,
+		})
+		return
+	}
+	if batch.Status != "待确认" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Batch is not in confirmable status"})
+		return
+	}
+
 	batch.Status = "已确认"
 	database.DB.Save(&batch)
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":       "Batch confirmed, pending receiving",
-		"items_created": createdItems,
+		"message":           "Batch confirmed, pending receiving",
+		"items_created":     createdItems,
+		"already_confirmed": false,
 	})
 }
 
@@ -1476,14 +1607,45 @@ func GetDispenseRequests(c *gin.Context) {
 	switch role {
 	case "leader":
 		query = query.Where("status IN ?", []string{"待审批", "已通过", "待双签", "已完成", "已驳回"})
+	case "procurement":
+		// 采购视角：查看完整领用台账，同时关注待双签
+		query = query.Where("status IN ?", []string{"待审批", "待双签", "已完成", "已驳回"})
 	case "key_holder":
 		query = query.Where("(key_holder_a_id = ? OR key_holder_b_id = ?) AND reagent_dispense_requests.status = ?", userID, userID, "待双签")
+	case "all":
+		// 全量台账（用于统一视角）
 	default:
 		query = query.Where("requester_id = ?", userID)
 	}
 
 	query.Order("reagent_dispense_requests.created_at DESC").Find(&requests)
 	c.JSON(http.StatusOK, requests)
+}
+
+// GetDispenseNotifications 返回领用流程待办提醒计数
+func GetDispenseNotifications(c *gin.Context) {
+	role := c.Query("role")
+	userID := getUserIDOrDefault(c, 1)
+
+	var todoCount int64
+	switch role {
+	case "leader":
+		database.DB.Model(&models.ReagentDispenseRequest{}).Where("status = ?", "待审批").Count(&todoCount)
+	case "procurement", "key_holder":
+		database.DB.Model(&models.ReagentDispenseRequest{}).
+			Where("status = ? AND ((key_holder_a_id = ? AND key_holder_a_confirmed_at IS NULL) OR (key_holder_b_id = ? AND key_holder_b_confirmed_at IS NULL))", "待双签", userID, userID).
+			Count(&todoCount)
+	default:
+		database.DB.Model(&models.ReagentDispenseRequest{}).
+			Where("requester_id = ? AND status IN ?", userID, []string{"待审批", "待双签"}).
+			Count(&todoCount)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"role":       role,
+		"user_id":    userID,
+		"todo_count": todoCount,
+	})
 }
 
 // LeaderApproveDispense 团队长审批领用申请
@@ -1501,10 +1663,8 @@ func LeaderApproveDispense(c *gin.Context) {
 	}
 
 	var body struct {
-		Approved     bool   `json:"approved"`
-		RejectMsg    string `json:"reject_msg"`
-		KeyHolderAID *uint  `json:"key_holder_a_id"`
-		KeyHolderBID *uint  `json:"key_holder_b_id"`
+		Approved  bool   `json:"approved"`
+		RejectMsg string `json:"reject_msg"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1528,9 +1688,14 @@ func LeaderApproveDispense(c *gin.Context) {
 
 	// 判断是否为管控品 → 需要双签
 	if dispReq.ReagentItem.ReagentCatalog.IsControlled {
+		keyHolderAID, keyHolderBID, err := resolveDispenseKeyHolders()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		dispReq.Status = "待双签"
-		dispReq.KeyHolderAID = body.KeyHolderAID
-		dispReq.KeyHolderBID = body.KeyHolderBID
+		dispReq.KeyHolderAID = keyHolderAID
+		dispReq.KeyHolderBID = keyHolderBID
 		expires := now.Add(24 * time.Hour)
 		dispReq.ExpiresAt = &expires
 		database.DB.Save(&dispReq)
@@ -1542,6 +1707,35 @@ func LeaderApproveDispense(c *gin.Context) {
 	dispReq.Status = "已通过"
 	database.DB.Save(&dispReq)
 	c.JSON(http.StatusOK, gin.H{"message": "Request approved", "status": "已通过"})
+}
+
+func resolveDispenseKeyHolders() (*uint, *uint, error) {
+	// 优先读取“用户权限管理”中的固定配置
+	var holderA models.User
+	errA := database.DB.Where("is_dispense_key_holder_a = ?", true).First(&holderA).Error
+	if errA != nil {
+		// 兜底：研发团队C团队长（默认部门ID=11）
+		errA = database.DB.Where("department_id = ? AND role = ?", 11, "team_leader").First(&holderA).Error
+	}
+	if errA != nil {
+		return nil, nil, fmt.Errorf("未配置钥匙持有人A（请在用户权限管理中设置）")
+	}
+
+	var holderB models.User
+	errB := database.DB.Where("is_dispense_key_holder_b = ?", true).First(&holderB).Error
+	if errB != nil {
+		// 兜底：采购角色
+		errB = database.DB.Where("role = ?", "procurement").Order("id ASC").First(&holderB).Error
+	}
+	if errB != nil {
+		return nil, nil, fmt.Errorf("未配置钥匙持有人B（请在用户权限管理中设置）")
+	}
+
+	if holderA.ID == 0 || holderB.ID == 0 || holderA.ID == holderB.ID {
+		return nil, nil, fmt.Errorf("双签持有人配置无效（A/B 不能相同）")
+	}
+
+	return &holderA.ID, &holderB.ID, nil
 }
 
 // KeyHolderConfirmDispense 钥匙持有人确认/驳回取用

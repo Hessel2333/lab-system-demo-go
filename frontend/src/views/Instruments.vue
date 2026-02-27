@@ -20,44 +20,29 @@ const tabs = [
 </script>
 
 <template>
-  <div class="min-h-full flex flex-col p-6 space-y-6">
-    <!-- Header -->
-    <div class="rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-600 p-6 text-white shadow-lg relative overflow-hidden shrink-0">
-      <!-- Decorative circles -->
-      <div class="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 rounded-full bg-white/10 blur-3xl pointer-events-none"></div>
-      
-      <div class="flex items-center justify-between relative z-10">
-        <div>
-          <h1 class="text-3xl font-bold tracking-tight">仪器管理系统</h1>
-          <p class="mt-2 text-blue-100 opacity-90 text-sm font-medium">全生命周期资产管理 · 采购 · 维护 · 预约</p>
-        </div>
-        <div class="flex gap-3">
-            <!-- Action buttons moved to specific tabs -->
-        </div>
-      </div>
+  <div class="reagent-scope space-y-6">
+    <div class="mb-2 border-b border-gray-100 pb-4">
+      <h1 class="text-2xl font-bold tracking-tight text-gray-900">仪器管理系统</h1>
+      <p class="mt-1 text-sm text-gray-500">统一管理仪器台账、采购、维护和预约流程</p>
     </div>
 
-    <!-- Tabs Navigation -->
-    <div class="border-b border-gray-200 shrink-0">
-      <nav class="-mb-px flex space-x-8" aria-label="Tabs">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          @click="activeTab = tab.id"
-          :class="[
-            activeTab === tab.id
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700',
-            'group inline-flex items-center border-b-2 py-4 px-1 text-sm font-medium transition-colors duration-200'
-          ]"
-        >
-          {{ tab.label }}
-        </button>
-      </nav>
+    <div class="apple-segmented flex w-full gap-1.5">
+      <button
+        v-for="tab in tabs"
+        :key="tab.id"
+        @click="activeTab = tab.id"
+        :class="[
+          'apple-segmented-btn w-full py-2.5 text-sm',
+          activeTab === tab.id
+            ? 'apple-segmented-btn-active'
+            : 'apple-segmented-btn-idle'
+        ]"
+      >
+        {{ tab.label }}
+      </button>
     </div>
 
-    <!-- Tab Content -->
-    <div class="flex-1">
+    <div class="min-h-[420px]">
       <Transition name="fade" mode="out-in">
         <InstrumentDashboard v-if="activeTab === 'dashboard'" />
         <InstrumentInventory v-else-if="activeTab === 'inventory'" />

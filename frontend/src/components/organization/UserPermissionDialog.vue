@@ -2,7 +2,13 @@
 import { ref, watch } from 'vue'
 import { X, Shield, Database, Lock } from 'lucide-vue-next'
 import type { User } from '@/api/organization'
-import { fetchUserPermissions, updateUserPermission, type InstrumentPermission } from '@/api/organization'
+import {
+  fetchUserPermissions,
+  updateUserPermission,
+  fetchUserReagentPermissions,
+  updateUserReagentPermissions,
+  type InstrumentPermission
+} from '@/api/organization'
 
 const props = defineProps<{
   modelValue: boolean
@@ -16,6 +22,12 @@ const emit = defineEmits<{
 const activeTab = ref('instruments')
 const permissions = ref<InstrumentPermission[]>([])
 const loading = ref(false)
+const reagentPermLoading = ref(false)
+const savingReagentPerm = ref(false)
+const reagentPerm = ref({
+  is_dispense_key_holder_a: false,
+  is_dispense_key_holder_b: false,
+})
 
 const loadPermissions = async () => {
     if (!props.user) return
@@ -29,9 +41,26 @@ const loadPermissions = async () => {
     }
 }
 
+const loadReagentPermissions = async () => {
+  if (!props.user) return
+  reagentPermLoading.value = true
+  try {
+    const data = await fetchUserReagentPermissions(props.user.ID)
+    reagentPerm.value = {
+      is_dispense_key_holder_a: !!data.is_dispense_key_holder_a,
+      is_dispense_key_holder_b: !!data.is_dispense_key_holder_b,
+    }
+  } catch (e) {
+    console.error(e)
+  } finally {
+    reagentPermLoading.value = false
+  }
+}
+
 watch(() => props.modelValue, (val) => {
     if (val && props.user) {
         loadPermissions()
+        loadReagentPermissions()
         activeTab.value = 'instruments'
     }
 })
@@ -48,6 +77,24 @@ const togglePermission = async (perm: InstrumentPermission) => {
         perm.has_permission = !newStatus
         console.error(e)
     }
+}
+
+const saveReagentPermissions = async () => {
+  if (!props.user) return
+  if (reagentPerm.value.is_dispense_key_holder_a && reagentPerm.value.is_dispense_key_holder_b) {
+    alert('同一用户不能同时担任A/B双签持有人')
+    return
+  }
+
+  savingReagentPerm.value = true
+  try {
+    await updateUserReagentPermissions(props.user.ID, reagentPerm.value)
+  } catch (e) {
+    console.error(e)
+    alert('保存失败')
+  } finally {
+    savingReagentPerm.value = false
+  }
 }
 </script>
 
@@ -93,7 +140,7 @@ const togglePermission = async (perm: InstrumentPermission) => {
             class="py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2"
             :class="activeTab === 'role' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
           >
-              <Lock class="w-4 h-4" /> 系统角色
+              <Lock class="w-4 h-4" /> 试剂双签角色
           </button>
       </div>
       
@@ -130,12 +177,66 @@ const togglePermission = async (perm: InstrumentPermission) => {
               </div>
           </div>
 
-          <!-- Other Tabs (Placeholders) -->
-          <div v-else class="flex flex-col items-center justify-center h-64 text-gray-400 gap-3">
+          <!-- Data Tab (Placeholder) -->
+          <div v-else-if="activeTab === 'data'" class="flex flex-col items-center justify-center h-64 text-gray-400 gap-3">
               <div class="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center">
                   <Lock class="w-6 h-6 opacity-20" />
               </div>
               <p class="text-sm">该模块尚未开放配置</p>
+          </div>
+          <!-- Reagent Role Tab -->
+          <div v-else class="p-6 space-y-4">
+              <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                双签持有人为全局唯一角色。开启后将自动替换原持有人。
+              </div>
+
+              <div v-if="reagentPermLoading" class="py-8 text-sm text-gray-400 text-center">加载中...</div>
+
+              <div v-else class="space-y-3">
+                <div class="flex items-center justify-between rounded-lg border border-gray-100 px-4 py-3">
+                  <div>
+                    <div class="text-sm font-medium text-gray-900">钥匙持有人 A</div>
+                    <div class="text-xs text-gray-500">建议配置为研发团队C团队长</div>
+                  </div>
+                  <button
+                    @click="reagentPerm.is_dispense_key_holder_a = !reagentPerm.is_dispense_key_holder_a; if (reagentPerm.is_dispense_key_holder_a) reagentPerm.is_dispense_key_holder_b = false"
+                    class="relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors"
+                    :class="reagentPerm.is_dispense_key_holder_a ? 'bg-green-500' : 'bg-gray-200'"
+                  >
+                    <span
+                      class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition"
+                      :class="reagentPerm.is_dispense_key_holder_a ? 'translate-x-5' : 'translate-x-0'"
+                    />
+                  </button>
+                </div>
+
+                <div class="flex items-center justify-between rounded-lg border border-gray-100 px-4 py-3">
+                  <div>
+                    <div class="text-sm font-medium text-gray-900">钥匙持有人 B</div>
+                    <div class="text-xs text-gray-500">建议配置为采购人员</div>
+                  </div>
+                  <button
+                    @click="reagentPerm.is_dispense_key_holder_b = !reagentPerm.is_dispense_key_holder_b; if (reagentPerm.is_dispense_key_holder_b) reagentPerm.is_dispense_key_holder_a = false"
+                    class="relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors"
+                    :class="reagentPerm.is_dispense_key_holder_b ? 'bg-green-500' : 'bg-gray-200'"
+                  >
+                    <span
+                      class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition"
+                      :class="reagentPerm.is_dispense_key_holder_b ? 'translate-x-5' : 'translate-x-0'"
+                    />
+                  </button>
+                </div>
+
+                <div class="pt-1">
+                  <button
+                    @click="saveReagentPermissions"
+                    :disabled="savingReagentPerm"
+                    class="h-9 rounded-lg bg-black px-4 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"
+                  >
+                    {{ savingReagentPerm ? '保存中...' : '保存双签角色' }}
+                  </button>
+                </div>
+              </div>
           </div>
 
       </div>

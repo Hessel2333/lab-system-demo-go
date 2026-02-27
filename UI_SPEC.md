@@ -1,0 +1,162 @@
+# UI 统一规范（SSOT）
+
+版本：`v1.0`  
+日期：`2026-02-27`  
+适用范围：`frontend/src` 全部业务页面（优先试剂管理模块）
+
+---
+
+## 1. 目标
+
+本规范用于统一页面 UI 结构与交互，重点解决以下问题：
+
+- 表格页面样式与布局不一致
+- 标题/说明/工具条重复或缺失
+- 按钮位置、筛选区位置不统一
+- 字号、间距、颜色语义不统一
+
+本文件是 UI 规则唯一标准（Single Source of Truth）。
+
+---
+
+## 2. 核心原则
+
+1. 单页单主标题：同一视图中不重复出现语义相同标题。  
+2. 结构统一优先于样式自由：先统一骨架，再做微视觉差异。  
+3. 角色只改数据与权限，不改页面骨架。  
+4. 主路径优先：默认展示用户最常用动作和状态。  
+5. 信息克制：减少无效卡片与重复文案。
+
+---
+
+## 3. 表格页面标准骨架
+
+表格页面必须采用统一容器：
+
+- 组件：`frontend/src/components/ui/TableSection.vue`
+- 样式：`apple-table-section-*`（定义在 `frontend/src/assets/index.css`）
+- 表格容器：`LedgerTable.vue` + `apple-table-wrap`
+
+标准结构固定为：
+
+1. `Header`：标题 + 说明 + 右侧主动作（可选）  
+2. `Toolbar`：搜索（左） + 筛选/状态Tab（右）  
+3. `Body`：表格 / Loading / Empty 三态
+
+---
+
+## 4. 规则细则（表格场景）
+
+### 4.1 标题与说明
+
+- 每个台账区域只保留一套标题，不允许外层重复标题。
+- 标题建议 4-8 字；说明建议 1 行，解释“这张台账做什么”。
+
+### 4.2 主动作按钮（新增/创建）
+
+- 主动作默认放在 `TableSection` Header 右上角（`#actions`）。
+- 不放在页面外层，不放在工具条中间，不与筛选混排。
+- 样式统一使用 `Button variant="primary"`，推荐高度 `h-9`。
+
+### 4.3 搜索与筛选
+
+- 搜索框固定在工具条左侧。
+- 状态筛选/Tab 固定在工具条右侧（`ml-auto`）。
+- 筛选项超过 6 个时必须分组或折叠，禁止整行堆叠。
+
+### 4.4 表格容器与头部
+
+- 必须使用 `apple-table-wrap` 包裹。
+- 表头样式统一：浅灰背景 + 11px 大写语义风格（由全局 class 提供）。
+- 行 hover 统一：`bg-slate-50/70`。
+
+### 4.5 空态与加载
+
+- 空态统一使用 `apple-table-empty`。
+- Loading 统一居中 spinner，不使用多种加载样式混用。
+
+---
+
+## 5. 通用组件规格
+
+### 5.1 Button
+
+- 主按钮：`primary`
+- 次按钮：`outline` / `secondary`
+- 危险操作：`destructive`
+- 尺寸优先：`sm`（表格行内）/ 默认（工具条与头部）
+
+### 5.2 Badge（状态）
+
+- 成功：`success`
+- 警告：`warning`
+- 信息：`info`
+- 错误：`destructive`
+- 默认：`default`
+
+禁止为同一状态在不同页面使用不同颜色语义。
+
+### 5.3 Segmented / Tab
+
+- 统一使用 `apple-segmented` + `apple-segmented-btn-*`
+- 角色差异只允许控制可见项，不允许改变交互模式
+
+---
+
+## 6. 文案与信息层级
+
+- 标题：结果导向（如“申购台账”“到货台账”）
+- 说明：动作导向（如“查看进度并推进流转”）
+- 按钮文案：动词开头（如“提交新申购”“确认收货”）
+- 空态文案：状态 + 下一步暗示（可选）
+
+---
+
+## 7. 交互一致性
+
+- 关键破坏操作必须二次确认：删除、批量忽略、耗尽核销
+- 错误提示优先透传后端原因，不使用泛化“操作失败”
+- 行内按钮数量建议不超过 2 个；更多动作放详情弹窗
+
+---
+
+## 8. 当前已落地（2026-02-27）
+
+- `ReagentRequestList.vue`：已接入统一骨架
+- `ReagentCatalogManager.vue`：已接入统一骨架
+- `ProcurementReceiving.vue`：已接入统一骨架
+- `ReagentUnifiedInventory.vue`：已接入统一骨架
+- `ReagentDispensePanel.vue`：已接入统一骨架（研发/采购/负责人同骨架）
+- `ResearcherArrivalList.vue`：已接入统一骨架
+- `TableSection.vue`：已创建并可复用
+- `index.css`：已新增统一表格区域样式
+
+---
+
+## 9. 后续迁移优先级
+
+P0：
+
+1. `ProcurementBatchImport.vue`
+2. `UserManagement.vue`（表格区）
+3. `SupplierManagement.vue`（表格区）
+
+P1：
+
+1. `MasterDataCenter` 下扩展主数据表格
+2. 其余建设中页的首版表格骨架
+
+---
+
+## 10. PR 验收清单（UI）
+
+每个涉及台账/表格的 PR，必须满足：
+
+- 使用 `TableSection` 统一骨架
+- 工具条满足“搜索左、筛选右”
+- 不存在重复标题
+- 主动作在 Header 右上
+- 使用统一空态与加载样式
+- 状态颜色语义符合 Badge 规范
+
+未满足以上项，不应合并。

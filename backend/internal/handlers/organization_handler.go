@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"lab-system-backend/internal/database"
 	"lab-system-backend/internal/models"
@@ -70,10 +71,12 @@ func buildDeptTree(all []models.Department, parentID *uint) []models.Department 
 // CreateUser creates a new user
 func CreateUser(c *gin.Context) {
 	var input struct {
-		Username     string `json:"username" binding:"required"`
-		RealName     string `json:"real_name" binding:"required"`
-		DepartmentID uint   `json:"department_id" binding:"required"`
-		Role         string `json:"role" binding:"required"`
+		Username             string `json:"username" binding:"required"`
+		RealName             string `json:"real_name" binding:"required"`
+		DepartmentID         uint   `json:"department_id" binding:"required"`
+		Role                 string `json:"role" binding:"required"`
+		IsDispenseKeyHolderA bool   `json:"is_dispense_key_holder_a"`
+		IsDispenseKeyHolderB bool   `json:"is_dispense_key_holder_b"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -81,17 +84,25 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
+	if input.IsDispenseKeyHolderA && input.IsDispenseKeyHolderB {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "同一用户不能同时担任A/B双签持有人"})
+		return
+	}
+
 	user := models.User{
-		Username:     input.Username,
-		RealName:     input.RealName,
-		DepartmentID: input.DepartmentID,
-		Role:         input.Role,
+		Username:             input.Username,
+		RealName:             input.RealName,
+		DepartmentID:         input.DepartmentID,
+		Role:                 input.Role,
+		IsDispenseKeyHolderA: input.IsDispenseKeyHolderA,
+		IsDispenseKeyHolderB: input.IsDispenseKeyHolderB,
 	}
 
 	if err := database.DB.Create(&user).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 		return
 	}
+	ensureUniqueDispenseKeyHolders(user.ID, input.IsDispenseKeyHolderA, input.IsDispenseKeyHolderB)
 
 	c.JSON(http.StatusCreated, user)
 }
@@ -106,10 +117,12 @@ func UpdateUser(c *gin.Context) {
 	}
 
 	var input struct {
-		Username     string `json:"username"`
-		RealName     string `json:"real_name"`
-		DepartmentID uint   `json:"department_id"`
-		Role         string `json:"role"`
+		Username             *string `json:"username"`
+		RealName             *string `json:"real_name"`
+		DepartmentID         *uint   `json:"department_id"`
+		Role                 *string `json:"role"`
+		IsDispenseKeyHolderA *bool   `json:"is_dispense_key_holder_a"`
+		IsDispenseKeyHolderB *bool   `json:"is_dispense_key_holder_b"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -117,13 +130,51 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 
-	if err := database.DB.Model(&user).Updates(models.User{
-		Username:     input.Username,
-		RealName:     input.RealName,
-		DepartmentID: input.DepartmentID,
-		Role:         input.Role,
-	}).Error; err != nil {
+	finalA := user.IsDispenseKeyHolderA
+	finalB := user.IsDispenseKeyHolderB
+	if input.IsDispenseKeyHolderA != nil {
+		finalA = *input.IsDispenseKeyHolderA
+	}
+	if input.IsDispenseKeyHolderB != nil {
+		finalB = *input.IsDispenseKeyHolderB
+	}
+	if finalA && finalB {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "同一用户不能同时担任A/B双签持有人"})
+		return
+	}
+
+	updates := map[string]interface{}{}
+	if input.Username != nil {
+		updates["username"] = *input.Username
+	}
+	if input.RealName != nil {
+		updates["real_name"] = *input.RealName
+	}
+	if input.DepartmentID != nil {
+		updates["department_id"] = *input.DepartmentID
+	}
+	if input.Role != nil {
+		updates["role"] = *input.Role
+	}
+	if input.IsDispenseKeyHolderA != nil {
+		updates["is_dispense_key_holder_a"] = *input.IsDispenseKeyHolderA
+	}
+	if input.IsDispenseKeyHolderB != nil {
+		updates["is_dispense_key_holder_b"] = *input.IsDispenseKeyHolderB
+	}
+	if len(updates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No fields to update"})
+		return
+	}
+
+	if err := database.DB.Model(&user).Updates(updates).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+		return
+	}
+	ensureUniqueDispenseKeyHolders(user.ID, finalA, finalB)
+
+	if err := database.DB.Preload("Department").First(&user, id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load updated user"})
 		return
 	}
 
@@ -139,4 +190,73 @@ func DeleteUser(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+}
+
+func ensureUniqueDispenseKeyHolders(userID uint, asA bool, asB bool) {
+	if asA {
+		database.DB.Model(&models.User{}).
+			Where("id <> ? AND is_dispense_key_holder_a = ?", userID, true).
+			Update("is_dispense_key_holder_a", false)
+	}
+	if asB {
+		database.DB.Model(&models.User{}).
+			Where("id <> ? AND is_dispense_key_holder_b = ?", userID, true).
+			Update("is_dispense_key_holder_b", false)
+	}
+}
+
+func GetUserReagentPermissions(c *gin.Context) {
+	id := c.Param("id")
+	var user models.User
+	if err := database.DB.First(&user, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"is_dispense_key_holder_a": user.IsDispenseKeyHolderA,
+		"is_dispense_key_holder_b": user.IsDispenseKeyHolderB,
+	})
+}
+
+func UpdateUserReagentPermissions(c *gin.Context) {
+	id := c.Param("id")
+	userID64, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+
+	var user models.User
+	if err := database.DB.First(&user, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	var input struct {
+		IsDispenseKeyHolderA bool `json:"is_dispense_key_holder_a"`
+		IsDispenseKeyHolderB bool `json:"is_dispense_key_holder_b"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if input.IsDispenseKeyHolderA && input.IsDispenseKeyHolderB {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "同一用户不能同时担任A/B双签持有人"})
+		return
+	}
+
+	if err := database.DB.Model(&user).Updates(map[string]interface{}{
+		"is_dispense_key_holder_a": input.IsDispenseKeyHolderA,
+		"is_dispense_key_holder_b": input.IsDispenseKeyHolderB,
+	}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update reagent permissions"})
+		return
+	}
+
+	ensureUniqueDispenseKeyHolders(uint(userID64), input.IsDispenseKeyHolderA, input.IsDispenseKeyHolderB)
+	c.JSON(http.StatusOK, gin.H{
+		"is_dispense_key_holder_a": input.IsDispenseKeyHolderA,
+		"is_dispense_key_holder_b": input.IsDispenseKeyHolderB,
+	})
 }

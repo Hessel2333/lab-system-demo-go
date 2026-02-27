@@ -5,6 +5,8 @@ import { Loader2, Search, Pencil, Trash2, Plus, X, FlaskConical } from 'lucide-v
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Label from '@/components/ui/Label.vue'
+import TableSection from '@/components/ui/TableSection.vue'
+import LedgerTable from '@/components/reagents/LedgerTable.vue'
 import ReagentCabinetManager from '@/components/reagents/ReagentCabinetManager.vue'
 
 const API = '/api/reagents/catalogs'
@@ -140,6 +142,18 @@ const onSearchInput = () => {
     clearTimeout(searchTimer)
     searchTimer = setTimeout(fetchCatalogs, 300)
 }
+
+const catalogColumns = [
+  { key: 'name', label: '名称' },
+  { key: 'cas', label: 'CAS 号' },
+  { key: 'labels', label: '分类标签' },
+  { key: 'aliases', label: '别称' },
+  { key: 'state', label: '物态' },
+  { key: 'storage', label: '储存条件' },
+  { key: 'spec', label: '规格' },
+  { key: 'alert', label: '预警线', align: 'right' as const },
+  { key: 'actions', label: '操作', align: 'right' as const },
+]
 </script>
 
 <template>
@@ -158,91 +172,82 @@ const onSearchInput = () => {
 
     <!-- 子页：品目数据库 -->
     <div v-show="activeSubTab === 'catalogs'">
-    <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div class="flex gap-3 items-center flex-wrap">
-            <div class="relative w-64">
-                <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
-                <Input v-model="searchQuery" @input="onSearchInput" class="pl-9" placeholder="搜索名称 / CAS / 别称..." />
-            </div>
-            <select v-model="labelFilter" @change="fetchCatalogs"
-                    class="text-sm border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-blue-500">
-                <option value="">全部分类</option>
-                <option v-for="l in ALL_LABELS" :key="l" :value="l">{{ l }}</option>
-            </select>
-        </div>
+    <TableSection
+      title="品目台账"
+      description="统一维护试剂品目、分类标签、规格与预警线，作为采购与库存的主数据底座"
+    >
+      <template #actions>
         <Button @click="openCreate" variant="primary" class="h-[38px] px-4 text-sm flex items-center gap-1.5 font-medium whitespace-nowrap">
-            <Plus class="w-4 h-4" /> 新增品目
+          <Plus class="w-4 h-4" /> 新增品目
         </Button>
-    </div>
+      </template>
 
-    <!-- Loading -->
-    <div v-if="isLoading" class="flex justify-center py-12">
-        <Loader2 class="w-8 h-8 animate-spin text-gray-400" />
-    </div>
+      <template #toolbar>
+        <div class="flex gap-3 items-center flex-wrap">
+          <div class="relative w-64">
+            <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+            <Input v-model="searchQuery" @input="onSearchInput" class="pl-9" placeholder="搜索名称 / CAS / 别称..." />
+          </div>
+          <select
+            v-model="labelFilter"
+            @change="fetchCatalogs"
+            class="text-sm border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-blue-500"
+          >
+            <option value="">全部分类</option>
+            <option v-for="l in ALL_LABELS" :key="l" :value="l">{{ l }}</option>
+          </select>
+        </div>
+      </template>
 
-    <!-- Table -->
-    <div v-else-if="catalogList.length > 0" class="apple-table-wrap">
-      <table class="w-full text-sm text-left">
-        <thead class="text-xs text-gray-700 uppercase bg-gray-50">
-          <tr>
-            <th class="px-4 py-3">名称</th>
-            <th class="px-4 py-3">CAS 号</th>
-            <th class="px-4 py-3">分类标签</th>
-            <th class="px-4 py-3">别称</th>
-            <th class="px-4 py-3">物态</th>
-            <th class="px-4 py-3">储存条件</th>
-            <th class="px-4 py-3">规格</th>
-            <th class="px-4 py-3 text-right">预警线</th>
-            <th class="px-4 py-3 text-right">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="cat in catalogList" :key="cat.id" class="bg-white border-b hover:bg-gray-50">
-            <td class="px-4 py-3">
-              <div class="font-medium text-gray-900">{{ cat.name }}</div>
-              <div class="text-[11px] text-gray-400 font-mono">{{ cat.formula }}</div>
-            </td>
-            <td class="px-4 py-3 font-mono text-gray-600 text-xs">{{ cat.cas_number }}</td>
-            <td class="px-4 py-3">
-              <div class="flex flex-wrap gap-1">
-                <span v-for="label in parseLabels(cat.chemical_labels)" :key="label"
-                      :class="['text-[10px] px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap', getLabelColor(label)]">
-                  {{ label }}
-                </span>
-                <span v-if="!cat.chemical_labels || cat.chemical_labels === '[]'" class="text-[10px] text-gray-400">未设置</span>
-              </div>
-            </td>
-            <td class="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate" :title="cat.aliases">
-              {{ cat.aliases || '-' }}
-            </td>
-            <td class="px-4 py-3 text-xs text-gray-600">{{ cat.physical_state || '-' }}</td>
-            <td class="px-4 py-3 text-xs text-gray-500 max-w-[180px] truncate" :title="cat.storage_condition">
-              {{ cat.storage_condition || '-' }}
-            </td>
-            <td class="px-4 py-3 text-xs text-gray-600">{{ cat.unit }}</td>
-            <td class="px-4 py-3 text-right text-xs">
-              <span class="inline-block whitespace-nowrap font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-200 shadow-sm">{{ cat.alert_threshold }} 件</span>
-            </td>
-            <td class="px-4 py-3 text-right">
-              <div class="flex items-center justify-end gap-1">
-                <button @click="openEdit(cat)" class="p-1.5 rounded-md hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition">
-                  <Pencil class="w-3.5 h-3.5" />
-                </button>
-                <button @click="deleteCatalog(cat.id, cat.name)" class="p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-600 transition">
-                  <Trash2 class="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+      <div v-if="isLoading" class="flex justify-center py-12">
+          <Loader2 class="w-8 h-8 animate-spin text-gray-400" />
+      </div>
 
-    <!-- Empty -->
-    <div v-else class="text-center py-16 text-gray-500">
-      <FlaskConical class="w-12 h-12 mx-auto mb-4 text-gray-300" />
-      <p class="text-sm">暂无品目数据</p>
-    </div>
+      <LedgerTable v-else-if="catalogList.length > 0" :columns="catalogColumns">
+        <tr v-for="cat in catalogList" :key="cat.id" class="bg-white border-b hover:bg-gray-50">
+          <td class="px-4 py-3">
+            <div class="font-medium text-gray-900">{{ cat.name }}</div>
+            <div class="text-[11px] text-gray-400 font-mono">{{ cat.formula }}</div>
+          </td>
+          <td class="px-4 py-3 font-mono text-gray-600 text-xs">{{ cat.cas_number }}</td>
+          <td class="px-4 py-3">
+            <div class="flex flex-wrap gap-1">
+              <span v-for="label in parseLabels(cat.chemical_labels)" :key="label"
+                    :class="['text-[10px] px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap', getLabelColor(label)]">
+                {{ label }}
+              </span>
+              <span v-if="!cat.chemical_labels || cat.chemical_labels === '[]'" class="text-[10px] text-gray-400">未设置</span>
+            </div>
+          </td>
+          <td class="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate" :title="cat.aliases">
+            {{ cat.aliases || '-' }}
+          </td>
+          <td class="px-4 py-3 text-xs text-gray-600">{{ cat.physical_state || '-' }}</td>
+          <td class="px-4 py-3 text-xs text-gray-500 max-w-[180px] truncate" :title="cat.storage_condition">
+            {{ cat.storage_condition || '-' }}
+          </td>
+          <td class="px-4 py-3 text-xs text-gray-600">{{ cat.unit }}</td>
+          <td class="px-4 py-3 text-right text-xs">
+            <span class="inline-block whitespace-nowrap font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-200 shadow-sm">{{ cat.alert_threshold }} 件</span>
+          </td>
+          <td class="px-4 py-3 text-right">
+            <div class="flex items-center justify-end gap-1">
+              <button @click="openEdit(cat)" class="p-1.5 rounded-md hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition">
+                <Pencil class="w-3.5 h-3.5" />
+              </button>
+              <button @click="deleteCatalog(cat.id, cat.name)" class="p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-600 transition">
+                <Trash2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </td>
+        </tr>
+      </LedgerTable>
+
+      <div v-else class="apple-table-empty text-gray-500">
+        <FlaskConical class="w-12 h-12 mx-auto mb-4 text-gray-300" />
+        <p class="text-sm">暂无品目数据</p>
+      </div>
+    </TableSection>
 
     <!-- Edit/Create Dialog (Overlay) -->
     <Teleport to="body">

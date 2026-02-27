@@ -4,8 +4,8 @@ import { Loader2, Search, Package } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Dialog from '@/components/ui/Dialog.vue'
-import Card from '@/components/ui/Card.vue'
 import Input from '@/components/ui/Input.vue'
+import TableSection from '@/components/ui/TableSection.vue'
 import axios from 'axios'
 import RequestProgressDialog from './RequestProgressDialog.vue'
 import LedgerTable from './LedgerTable.vue'
@@ -13,6 +13,9 @@ import LedgerTable from './LedgerTable.vue'
 const props = defineProps({
     role: { type: String, default: 'researcher' }
 })
+const emit = defineEmits<{
+    (e: 'create-request'): void
+}>()
 
 const requests = ref<any[]>([])
 const isLoading = ref(true)
@@ -190,18 +193,35 @@ const ledgerColumns = [
   { key: 'date', label: '申请日期' },
   { key: 'actions', label: '操作' },
 ]
+
+const sectionTitle = computed(() => {
+    if (props.role === 'leader') return '申购审批台账'
+    if (props.role === 'procurement') return '申购执行台账'
+    return '我的申购台账'
+})
+
+const sectionDescription = computed(() => {
+    if (props.role === 'leader') return '统一查看待审批申购并完成团队长审批决策'
+    if (props.role === 'procurement') return '聚焦待采购与已接单条目，推进采购闭环'
+    return '查看我的申购进度与采购流转状态'
+})
 </script>
 
 <template>
-  <Card>
-    <div class="p-6 space-y-4">
-      <!-- Toolbar -->
-      <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-          <div class="relative w-72">
+  <TableSection :title="sectionTitle" :description="sectionDescription">
+      <template v-if="props.role === 'researcher'" #actions>
+        <Button variant="primary" size="sm" class="h-9 px-4" @click="emit('create-request')">
+          + 提交新申购
+        </Button>
+      </template>
+
+      <template #toolbar>
+      <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
+          <div class="relative w-full sm:w-80">
               <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
               <Input v-model="searchQuery" class="pl-9" placeholder="搜索单号、试剂名称、CAS号..." />
           </div>
-          <div class="apple-segmented">
+          <div class="apple-segmented sm:ml-auto">
               <button
                 v-for="s in roleStatusOptions"
                 :key="s"
@@ -217,11 +237,12 @@ const ledgerColumns = [
               </button>
           </div>
       </div>
+      </template>
 
       <div v-if="isLoading" class="flex justify-center p-8">
         <Loader2 class="h-8 w-8 animate-spin text-gray-400" />
       </div>
-      <div v-else-if="filteredRequests.length === 0" class="text-center text-gray-500 py-8">
+      <div v-else-if="filteredRequests.length === 0" class="apple-table-empty">
         暂无匹配的申购记录。
       </div>
       <LedgerTable v-else :columns="ledgerColumns">
@@ -353,7 +374,7 @@ const ledgerColumns = [
 
             </template>
       </LedgerTable>
-    </div>
+  </TableSection>
 
     <!-- Progress Timeline Dialog -->
     <RequestProgressDialog
@@ -420,5 +441,4 @@ const ledgerColumns = [
         </div>
       </div>
     </Transition>
-  </Card>
 </template>

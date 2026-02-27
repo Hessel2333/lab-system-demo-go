@@ -411,7 +411,7 @@ func InternalSeedOrganization(tx *gorm.DB) error {
 func InternalSeedUsers(tx *gorm.DB) error {
 	users := []models.User{
 		{Model: gorm.Model{ID: 1}, Username: "admin", RealName: "系统管理员", DepartmentID: 7, Role: "admin"},
-		{Model: gorm.Model{ID: 2}, Username: "caigou1", RealName: "刘采购", DepartmentID: 12, Role: "procurement"},
+		{Model: gorm.Model{ID: 2}, Username: "caigou1", RealName: "刘采购", DepartmentID: 12, Role: "procurement", IsDispenseKeyHolderB: true},
 		{Model: gorm.Model{ID: 3}, Username: "caigou2", RealName: "王采购", DepartmentID: 12, Role: "procurement"},
 
 		// 分析团队 (Dept 8)
@@ -428,7 +428,7 @@ func InternalSeedUsers(tx *gorm.DB) error {
 		{Model: gorm.Model{ID: 302}, Username: "wufan", RealName: "吴凡", DepartmentID: 10, Role: "researcher"},
 
 		// 研发C组 (Dept 11)
-		{Model: gorm.Model{ID: 401}, Username: "zhengliu", RealName: "郑六", DepartmentID: 11, Role: "team_leader"},
+		{Model: gorm.Model{ID: 401}, Username: "zhengliu", RealName: "郑六", DepartmentID: 11, Role: "team_leader", IsDispenseKeyHolderA: true},
 	}
 
 	for _, expectedUser := range users {
@@ -436,11 +436,13 @@ func InternalSeedUsers(tx *gorm.DB) error {
 		tx.Unscoped().Model(&models.User{}).Where("id = ?", expectedUser.ID).Count(&count)
 		if count > 0 {
 			tx.Unscoped().Model(&models.User{}).Where("id = ?", expectedUser.ID).Updates(map[string]interface{}{
-				"username":      expectedUser.Username,
-				"real_name":     expectedUser.RealName,
-				"department_id": expectedUser.DepartmentID,
-				"role":          expectedUser.Role,
-				"deleted_at":    nil,
+				"username":                 expectedUser.Username,
+				"real_name":                expectedUser.RealName,
+				"department_id":            expectedUser.DepartmentID,
+				"role":                     expectedUser.Role,
+				"is_dispense_key_holder_a": expectedUser.IsDispenseKeyHolderA,
+				"is_dispense_key_holder_b": expectedUser.IsDispenseKeyHolderB,
+				"deleted_at":               nil,
 			})
 		} else {
 			if err := tx.Create(&expectedUser).Error; err != nil {

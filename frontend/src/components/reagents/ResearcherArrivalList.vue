@@ -2,13 +2,13 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import axios from 'axios'
 import Button from '@/components/ui/Button.vue'
-import Card from '@/components/ui/Card.vue'
 import Badge from '@/components/ui/Badge.vue'
 import { CheckCircle, Clock, MapPin, Package, FileText, Search, Loader2 } from 'lucide-vue-next'
 import ItemLifecycleDialog from '@/components/reagents/ItemLifecycleDialog.vue'
 import Input from '@/components/ui/Input.vue'
 import LedgerTable from './LedgerTable.vue'
 import Dialog from '@/components/ui/Dialog.vue'
+import TableSection from '@/components/ui/TableSection.vue'
 import { formatRatio } from '@/lib/quantity'
 import { toast } from 'vue-sonner'
 import { useActionFeedback } from '@/lib/feedback'
@@ -164,51 +164,44 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <div class="flex justify-between items-center">
-      <div>
-        <h2 class="text-xl font-bold text-gray-900">到货台账</h2>
-        <p class="text-sm text-gray-500 mt-1">研发视角：查看属于我的到货条目并完成入库确认</p>
+    <TableSection title="到货台账" description="研发视角：查看属于我的到货条目并完成入库确认">
+      <template #actions>
+        <Button @click="fetchArrivals" variant="outline" size="sm">刷新列表</Button>
+      </template>
+
+      <template #toolbar>
+        <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
+          <div class="relative w-full sm:w-80">
+            <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+            <Input v-model="searchQuery" class="pl-9" placeholder="搜索试剂名称、批次号、申请单号..." />
+          </div>
+          <div class="apple-segmented w-fit sm:ml-auto">
+            <button
+              v-for="s in statusOptions"
+              :key="s"
+              @click="statusFilter = s"
+              :class="[
+                'apple-segmented-btn',
+                statusFilter === s
+                  ? 'apple-segmented-btn-active'
+                  : 'apple-segmented-btn-idle'
+              ]"
+            >
+              {{ s }}
+            </button>
+          </div>
+        </div>
+      </template>
+
+      <div v-if="loading" class="flex justify-center py-12">
+        <Loader2 class="h-8 w-8 animate-spin text-gray-400" />
       </div>
-      <Button @click="fetchArrivals" variant="outline" size="sm">刷新列表</Button>
-    </div>
 
-    <Card>
-      <div class="p-6 space-y-4">
-        <!-- Toolbar -->
-        <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-          <div class="relative w-72">
-              <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
-              <Input v-model="searchQuery" class="pl-9" placeholder="搜索试剂名称、批次号、申请单号..." />
-          </div>
-          <div class="apple-segmented w-fit">
-              <button
-                v-for="s in statusOptions"
-                :key="s"
-                @click="statusFilter = s"
-                :class="[
-                  'apple-segmented-btn',
-                  statusFilter === s
-                    ? 'apple-segmented-btn-active'
-                    : 'apple-segmented-btn-idle'
-                ]"
-              >
-                {{ s }}
-              </button>
-          </div>
-        </div>
+      <div v-else-if="filteredItems.length === 0" class="apple-table-empty">
+        没有找到符合当前条件“{{ statusFilter }}”的试剂记录。
+      </div>
 
-        <!-- Content -->
-        <div v-if="loading" class="flex justify-center py-12">
-          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-
-        <div v-else-if="filteredItems.length === 0" class="bg-gray-50 rounded-xl border-2 border-dashed py-16 text-center">
-          <Package class="h-12 w-12 text-gray-300 mx-auto mb-3" />
-          <h3 class="text-lg font-medium text-gray-900">暂无相关试剂</h3>
-          <p class="text-gray-500 mt-1">没有找到符合当前条件“{{ statusFilter }}”的试剂记录</p>
-        </div>
-
-        <LedgerTable v-else :columns="arrivalColumns">
+      <LedgerTable v-else :columns="arrivalColumns">
               <tr v-for="item in filteredItems" :key="item.uuid" 
                   class="bg-white border-b hover:bg-gray-50 group transition-colors"
                   :class="item.status === '已耗尽' ? 'opacity-70 grayscale' : ''">
@@ -283,9 +276,8 @@ onMounted(() => {
                   </Button>
                 </td>
               </tr>
-        </LedgerTable>
-      </div>
-    </Card>
+      </LedgerTable>
+    </TableSection>
 
     <!-- 引入全生命周期悬浮窗 -->
     <ItemLifecycleDialog 
