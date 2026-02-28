@@ -39,7 +39,6 @@ const userColumns = [
   { key: 'name', label: '姓名' },
   { key: 'username', label: '工号/用户名' },
   { key: 'role', label: '组织角色' },
-  { key: 'flow_role', label: '试剂流程角色' },
   { key: 'status', label: '状态' },
   { key: 'actions', label: '操作', align: 'right' as const },
 ]
@@ -58,26 +57,6 @@ const roleMeta: Record<string, { label: string; className: string }> = {
 
 const roleName = (role: string) => roleMeta[role]?.label || role || '-'
 const roleBadgeClass = (role: string) => roleMeta[role]?.className || 'bg-gray-100 text-gray-700'
-
-const getFlowRoles = (user: User) => {
-  const tags: Array<{ label: string; className: string }> = []
-  if (user.role === 'team_leader') {
-    tags.push({ label: '团队长审批', className: 'bg-indigo-100 text-indigo-700' })
-  }
-  if (user.role === 'procurement' || user.role === 'procurement_specialist') {
-    tags.push({ label: '采购执行', className: 'bg-amber-100 text-amber-700' })
-  }
-  if (user.is_dispense_key_holder_a) {
-    tags.push({ label: '双签A', className: 'bg-emerald-100 text-emerald-700' })
-  }
-  if (user.is_dispense_key_holder_b) {
-    tags.push({ label: '双签B', className: 'bg-orange-100 text-orange-700' })
-  }
-  if (tags.length === 0) {
-    tags.push({ label: '无特殊流程角色', className: 'bg-slate-100 text-slate-500' })
-  }
-  return tags
-}
 
 const loadDepartments = async () => {
   try {
@@ -206,9 +185,6 @@ const filteredUsers = computed(() => {
   return result
 })
 
-const keyHolderA = computed(() => allUsers.value.find((u) => !!u.is_dispense_key_holder_a))
-const keyHolderB = computed(() => allUsers.value.find((u) => !!u.is_dispense_key_holder_b))
-
 const sectionTitle = computed(() => {
   if (!selectedDept.value) return '人员台账'
   return `${selectedDept.value.name} · 人员台账`
@@ -251,10 +227,6 @@ const sectionDescription = computed(() => {
             <div class="text-xs text-gray-500 sm:ml-auto">当前显示所选组织直属成员</div>
           </div>
           <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
-            <div class="flex items-center gap-2 text-xs text-gray-500">
-              <span class="inline-flex items-center rounded-md bg-slate-100 px-2 py-1">双签A：{{ keyHolderA?.real_name || '-' }}</span>
-              <span class="inline-flex items-center rounded-md bg-slate-100 px-2 py-1">双签B：{{ keyHolderB?.real_name || '-' }}</span>
-            </div>
             <div class="apple-segmented w-fit sm:ml-auto">
               <button
                 v-for="option in roleOptions"
@@ -290,18 +262,6 @@ const sectionDescription = computed(() => {
             <span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium" :class="roleBadgeClass(user.role)">
               {{ roleName(user.role) }}
             </span>
-          </td>
-          <td class="px-6 py-3">
-            <div class="flex flex-wrap items-center gap-1.5">
-              <span
-                v-for="tag in getFlowRoles(user)"
-                :key="tag.label"
-                class="inline-flex items-center rounded px-2 py-0.5 text-[11px] font-semibold"
-                :class="tag.className"
-              >
-                {{ tag.label }}
-              </span>
-            </div>
           </td>
           <td class="px-6 py-3">
             <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700">
