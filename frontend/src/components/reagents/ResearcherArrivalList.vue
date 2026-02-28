@@ -9,9 +9,11 @@ import Input from '@/components/ui/Input.vue'
 import LedgerTable from './LedgerTable.vue'
 import Dialog from '@/components/ui/Dialog.vue'
 import TableSection from '@/components/ui/TableSection.vue'
+import FlowDetailDialog from '@/components/workflow/FlowDetailDialog.vue'
 import { formatRatio } from '@/lib/quantity'
 import { toast } from 'vue-sonner'
 import { useActionFeedback } from '@/lib/feedback'
+import { getInventoryDisplayStatus, getInventoryStatusVariant, isArrivedStatus, isInStorageStatus, isUsedStatus } from '@/lib/reagent-status'
 
 const items = ref<any[]>([])
 const loading = ref(false)
@@ -21,6 +23,8 @@ const searchQuery = ref('')
 const checkInDialogOpen = ref(false)
 const checkInTarget = ref<any>(null)
 const checkInCabinetId = ref<number>(0)
+const flowDialogOpen = ref(false)
+const flowDialogItem = ref<any>(null)
 const { isPending, runAction } = useActionFeedback()
 
 const props = defineProps<{
@@ -32,7 +36,7 @@ const currentUserId = computed(() => props.userId || 1)
 
 // 状态过滤 Tab
 const statusFilter = ref('已到货')
-const statusOptions = ['全部', '已到货', '在库']
+const statusOptions = ['全部', '已到货', '已入库']
 
 // --- 档案弹窗 ---
 const lifecycleDialog = ref({
@@ -46,8 +50,8 @@ const openLifecycleDialog = (uuid: string) => {
 const fetchArrivals = async () => {
     loading.value = true
     try {
-        // 请求：获取当前申购人全生命周期(所有已赋码)的试剂实体
-        const res = await axios.get(`/api/reagents/items?requestor_id=${currentUserId.value}`)
+        // 获取“已赋码”试剂实体，按状态过滤出到货/在库记录
+        const res = await axios.get('/api/reagents/items')
         items.value = res.data
     } catch (e) {
         console.error("Failed to fetch arrivals", e)
@@ -64,8 +68,8 @@ watch(currentUserId, () => {
 const filteredItems = computed(() => {
     const q = searchQuery.value.trim().toLowerCase()
     const source = statusFilter.value === '全部'
-      ? items.value.filter((i: any) => i.status !== '已耗尽')
-      : items.value.filter((i: any) => i.status === statusFilter.value)
+      ? items.value.filter((i: any) => !isUsedStatus(i.status))
+      : items.value.filter((i: any) => getInventoryDisplayStatus(i.status) === statusFilter.value)
 
     if (!q) return source
 
@@ -73,23 +77,19 @@ const filteredItems = computed(() => {
       i.reagent_catalog?.name?.toLowerCase()?.includes(q) ||
       i.reagent_catalog?.cas_number?.toLowerCase()?.includes(q) ||
       String(i.batch_number || '').toLowerCase().includes(q) ||
-      String(i.uuid || '').toLowerCase().includes(q) ||
-      String(i.reagent_request_id || '').toLowerCase().includes(q)
+      String(i.uuid || '').toLowerCase().includes(q)
     )
 })
 
 const getLedgerStatus = (item: any) => {
-    if (item.status === '已到货') return '待我入库'
-    if (item.status === '在库') return '已入库'
-    if (item.status === '已耗尽') return '已耗尽'
-    return item.status || '未知'
+    if (isArrivedStatus(item.status)) return '待我入库'
+    if (isInStorageStatus(item.status)) return '已入库'
+    if (isUsedStatus(item.status)) return '已耗尽'
+    return getInventoryDisplayStatus(item.status)
 }
 
 const getStatusVariant = (item: any) => {
-    if (item.status === '已到货') return 'warning'
-    if (item.status === '在库') return 'success'
-    if (item.status === '已耗尽') return 'outline'
-    return 'default'
+    return getInventoryStatusVariant(item.status)
 }
 
 const formatArriveTime = (t: string) => {
@@ -99,7 +99,7 @@ const formatArriveTime = (t: string) => {
 
 const arrivalColumns = [
   { key: 'reagent', label: '试剂信息' },
-  { key: 'request', label: '来源申请' },
+  { key: 'batch', label: '批次记录' },
   { key: 'location', label: '存放位置' },
   { key: 'status', label: '台账状态' },
   { key: 'time', label: '到货时间' },
@@ -156,6 +156,84 @@ const submitCheckIn = async () => {
     processing.value = null
 }
 
+const openFlowDialog = (item: any) => {
+    flowDialogItem.value = item
+    flowDialogOpen.value = true
+}
+
+const flowTitle = computed(() => '到货入库流转单')
+const flowSubtitle = computed(() => flowDialogItem.value?.reagent_catalog?.name || '到货台账')
+const flowStatus = computed(() => flowDialogItem.value ? getLedgerStatus(flowDialogItem.value) : '-')
+const flowMeta = computed(() => {
+    const item = flowDialogItem.value
+    if (!item) return []
+    return [
+      { label: '条码', value: `#${String(item.uuid || '').substring(0, 8).toUpperCase()}` },
+      { label: '批次号', value: item.batch_number || '-' },
+      { label: 'CAS', value: item.reagent_catalog?.cas_number || '-' },
+      { label: '当前位置', value: item.location || '暂存区' },
+      { label: '到货时间', value: formatArriveTime(item.created_at) },
+    ]
+})
+const flowSteps = computed(() => {
+    const item = flowDialogItem.value
+    if (!item) return []
+    const arrived = isArrivedStatus(item.status)
+    const inStorage = isInStorageStatus(item.status)
+    const used = isUsedStatus(item.status)
+    return [
+      {
+        key: 'receive',
+        label: '采购到货确认',
+        state: 'completed' as const,
+        description: '采购侧已完成到货确认并生成条码',
+        operator: '采购人员',
+        time: formatArriveTime(item.created_at),
+      },
+      {
+        key: 'staging',
+        label: '赋码暂存',
+        state: 'completed' as const,
+        description: '条码已进入暂存区，等待研发入库',
+        operator: '系统',
+      },
+      {
+        key: 'checkin',
+        label: '研发扫码入库',
+        state: inStorage || used ? 'completed' as const : (arrived ? 'current' as const : 'pending' as const),
+        description: inStorage || used ? '已完成实验室与试剂柜入库' : '请在当前页面确认入库',
+        operator: inStorage || used ? '研发人员' : undefined,
+      },
+      {
+        key: 'manage',
+        label: '库存管理',
+        state: used ? 'completed' as const : (inStorage ? 'current' as const : 'pending' as const),
+        description: used ? '已耗尽归档' : '进入库存台账进行后续管理',
+      },
+    ]
+})
+const flowNotes = computed(() => {
+    const item = flowDialogItem.value
+    if (!item) return []
+    if (isArrivedStatus(item.status)) {
+      return [{ type: 'info' as const, text: '当前仍在暂存区，请选择实验室与试剂柜完成入库。' }]
+    }
+    if (isInStorageStatus(item.status)) {
+      return [{ type: 'success' as const, text: '该条码已入库，可在库存台账执行使用或耗尽。' }]
+    }
+    return [{ type: 'info' as const, text: '该条码已进入生命周期后续阶段。' }]
+})
+const flowActions = computed(() => {
+    const item = flowDialogItem.value
+    if (!item || !isArrivedStatus(item.status)) return []
+    return [{ key: 'checkin', label: '确认入库', variant: 'primary' as const }]
+})
+const handleFlowAction = (actionKey: string) => {
+    if (actionKey !== 'checkin' || !flowDialogItem.value) return
+    flowDialogOpen.value = false
+    openCheckInDialog(flowDialogItem.value)
+}
+
 onMounted(() => {
     fetchArrivals()
     fetchCabinets()
@@ -173,7 +251,7 @@ onMounted(() => {
         <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
           <div class="relative w-full sm:w-80">
             <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
-            <Input v-model="searchQuery" class="pl-9" placeholder="搜索试剂名称、批次号、申请单号..." />
+            <Input v-model="searchQuery" class="pl-9" placeholder="搜索试剂名称、批次号、条码..." />
           </div>
           <div class="apple-segmented w-fit sm:ml-auto">
             <button
@@ -204,12 +282,12 @@ onMounted(() => {
       <LedgerTable v-else :columns="arrivalColumns">
               <tr v-for="item in filteredItems" :key="item.uuid" 
                   class="bg-white border-b hover:bg-gray-50 group transition-colors"
-                  :class="item.status === '已耗尽' ? 'opacity-70 grayscale' : ''">
+                  :class="isUsedStatus(item.status) ? 'opacity-70 grayscale' : ''">
                 <!-- 物资条码与类型 -->
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-3">
                     <div class="p-2 rounded-lg bg-blue-50 text-blue-600 hidden sm:block"
-                         :class="item.status === '已耗尽' ? 'bg-gray-100 text-gray-500' : ''">
+                         :class="isUsedStatus(item.status) ? 'bg-gray-100 text-gray-500' : ''">
                       <Package class="h-5 w-5" />
                     </div>
                     <div>
@@ -219,7 +297,7 @@ onMounted(() => {
                       <div class="flex items-center gap-2 mt-1">
                         <span class="text-xs text-gray-500 font-mono">{{ item.cas_number || '--' }}</span>
                         <button @click="openLifecycleDialog(item.uuid)" class="text-[10px] text-blue-500 hover:underline flex items-center gap-0.5 font-mono bg-blue-50 px-1 py-0.5 rounded"
-                                :class="item.status==='已耗尽'? 'text-gray-500 bg-gray-100' : ''">
+                                :class="isUsedStatus(item.status) ? 'text-gray-500 bg-gray-100' : ''">
                           <FileText class="w-3 h-3" /> #{{ String(item.uuid).substring(0,8).toUpperCase() }}
                         </button>
                       </div>
@@ -229,23 +307,23 @@ onMounted(() => {
                 
                 <!-- 批次记录 -->
                 <td class="px-6 py-4 text-gray-600">
-                  <div class="font-medium text-gray-900">申购单 #{{ item.reagent_request_id || '--' }}</div>
-                  <div class="text-xs text-gray-500 mt-1">{{ item.batch_number || '无批次号' }}</div>
+                  <div class="font-medium text-gray-900">批次 {{ item.batch_number || '--' }}</div>
+                  <div class="text-xs text-gray-500 mt-1">条码 #{{ String(item.uuid).substring(0,8).toUpperCase() }}</div>
                 </td>
 
                 <!-- 位置信息 -->
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-1.5 text-gray-700">
                     <MapPin class="h-4 w-4 text-gray-400" />
-                    <span v-if="item.status === '已到货'"><span class="text-amber-600 font-medium">{{ item.location }}</span> (暂存区)</span>
-                    <span v-else><span class="text-emerald-600 font-medium">{{ item.location || '已不在柜' }}</span></span>
+                    <span v-if="isArrivedStatus(item.status)" class="text-amber-600 font-medium">{{ item.location || '暂存区' }}</span>
+                    <span v-else class="text-emerald-600 font-medium">{{ item.location || '已不在柜' }}</span>
                   </div>
                 </td>
 
                 <!-- 台账状态 -->
                 <td class="px-6 py-4">
                   <Badge :variant="getStatusVariant(item)">{{ getLedgerStatus(item) }}</Badge>
-                  <div v-if="item.status === '在库'" class="mt-1 text-[11px] text-emerald-600">
+                  <div v-if="isInStorageStatus(item.status)" class="mt-1 text-[11px] text-emerald-600">
                     余量 {{ formatRatio(item.remaining_volume, item.capacity, item.reagent_catalog?.unit, 'ml') }}
                   </div>
                 </td>
@@ -260,20 +338,23 @@ onMounted(() => {
 
                 <!-- 操作栏 -->
                 <td class="px-6 py-4 text-right">
-                  <Button v-if="item.status === '已到货'"
-                    @click="openCheckInDialog(item)" 
-                    :disabled="processing === item.uuid || isPending(`checkin-${item.uuid}`)"
-                    variant="primary"
-                    size="sm"
-                    class="h-8 shadow-sm whitespace-nowrap"
-                  >
-                    <Loader2 v-if="processing === item.uuid" class="mr-1.5 h-4 w-4 animate-spin" />
-                    <CheckCircle v-else class="h-4 w-4 mr-1.5" />
-                    确认入库
-                  </Button>
-                  <Button v-else variant="outline" size="sm" class="h-8 text-gray-500 whitespace-nowrap" @click="openLifecycleDialog(item.uuid)">
-                    查看台账流水
-                  </Button>
+                  <div class="flex items-center justify-end gap-2">
+                    <Button variant="outline" size="sm" class="h-8 whitespace-nowrap" @click="openFlowDialog(item)">
+                      流转单
+                    </Button>
+                    <Button v-if="isArrivedStatus(item.status)"
+                      @click="openCheckInDialog(item)"
+                      :disabled="processing === item.uuid || isPending(`checkin-${item.uuid}`)"
+                      variant="primary"
+                      size="sm"
+                      class="h-8 shadow-sm whitespace-nowrap"
+                    >
+                      <Loader2 v-if="processing === item.uuid" class="mr-1.5 h-4 w-4 animate-spin" />
+                      <CheckCircle v-else class="h-4 w-4 mr-1.5" />
+                      确认入库
+                    </Button>
+                    <span v-else class="text-xs text-slate-400">仅查看</span>
+                  </div>
                 </td>
               </tr>
       </LedgerTable>
@@ -311,5 +392,18 @@ onMounted(() => {
         <Button variant="primary" :disabled="!checkInCabinetId || !!processing || (checkInTarget && isPending(`checkin-${checkInTarget.uuid}`))" @click="submitCheckIn">确认入库</Button>
       </template>
     </Dialog>
+
+    <FlowDetailDialog
+      :open="flowDialogOpen"
+      :title="flowTitle"
+      :subtitle="flowSubtitle"
+      :status="flowStatus"
+      :meta="flowMeta"
+      :steps="flowSteps"
+      :actions="flowActions"
+      :notes="flowNotes"
+      @close="flowDialogOpen = false"
+      @action="handleFlowAction"
+    />
   </div>
 </template>

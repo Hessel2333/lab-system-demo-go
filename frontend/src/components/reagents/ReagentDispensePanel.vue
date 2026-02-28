@@ -4,9 +4,9 @@ import { Loader2, Send, XCircle } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
 import TableSection from '@/components/ui/TableSection.vue'
+import Input from '@/components/ui/Input.vue'
+import LedgerTable from './LedgerTable.vue'
 import FlowStatusPill from '@/components/workflow/FlowStatusPill.vue'
-import FlowTimeline from '@/components/workflow/FlowTimeline.vue'
-import FlowActionPanel from '@/components/workflow/FlowActionPanel.vue'
 import FlowDetailDialog from '@/components/workflow/FlowDetailDialog.vue'
 import axios from 'axios'
 import { formatAmount } from '@/lib/quantity'
@@ -57,6 +57,23 @@ const searchKeyword = ref('')
 const latestRequestId = ref<number | null>(null)
 const flowDetailOpen = ref(false)
 const flowDetailRequestId = ref<number | null>(null)
+
+const controlledColumns = [
+  { key: 'reagent', label: '试剂' },
+  { key: 'barcode', label: '条码' },
+  { key: 'location', label: '当前位置' },
+  { key: 'volume', label: '余量' },
+  { key: 'actions', label: '操作', align: 'right' as const },
+]
+
+const requestColumns = [
+  { key: 'reagent', label: '试剂信息' },
+  { key: 'requester', label: '申请人' },
+  { key: 'amount', label: '申请量' },
+  { key: 'status', label: '状态' },
+  { key: 'meta', label: '申请信息' },
+  { key: 'actions', label: '操作', align: 'right' as const },
+]
 
 const quickApply = ref({
   reagentItemId: '',
@@ -305,7 +322,25 @@ const getFlowActions = (req: any): FlowActionItem[] => {
   return actions
 }
 
-const hasFlowActions = (req: any) => getFlowActions(req).length > 0
+const getLedgerActions = (req: any): FlowActionItem[] => {
+  const actions: FlowActionItem[] = []
+  const isProcessing = keyConfirming.value === req.id
+  if (props.role === 'leader' && req.status === '待审批') {
+    actions.push({ key: 'leader-approve', label: '审批', variant: 'primary' })
+  }
+  if (canCurrentUserKeyConfirm(req)) {
+    actions.push({
+      key: 'key-confirm',
+      label: '确认',
+      variant: 'primary',
+      disabled: isProcessing,
+      loading: isProcessing,
+    })
+  }
+  return actions
+}
+
+const hasLedgerActions = (req: any) => getLedgerActions(req).length > 0
 const currentFlowDetailRequest = computed(() => requests.value.find((req) => req.id === flowDetailRequestId.value) || null)
 
 const openFlowDetail = (req: any) => {
@@ -314,23 +349,36 @@ const openFlowDetail = (req: any) => {
 }
 
 const getFlowMeta = (req: any) => {
-  return [
+  const controlled = !!req.reagent_item?.reagent_catalog?.is_controlled
+  const meta = [
     { label: '申请单号', value: `#${req.id}` },
     { label: '申请人', value: req.requester?.real_name || '-' },
     { label: '申请量', value: String(req.amount ?? '-') },
     { label: '申请时间', value: formatTime(req.created_at) },
     { label: '用途', value: req.purpose || '-' },
   ]
+  if (req.leader?.real_name || req.leader_id) {
+    meta.push({ label: '审批人', value: req.leader?.real_name || `用户#${req.leader_id}` })
+  }
+  if (controlled) {
+    meta.push({ label: '钥匙A', value: req.key_holder_a?.real_name || (req.key_holder_a_id ? `用户#${req.key_holder_a_id}` : '-') })
+    meta.push({ label: '钥匙B', value: req.key_holder_b?.real_name || (req.key_holder_b_id ? `用户#${req.key_holder_b_id}` : '-') })
+  }
+  return meta
 }
 
 const getFlowNotes = (req: any) => {
   const notes: Array<{ type?: 'info' | 'warning' | 'error' | 'success'; text: string }> = []
+  if (req.status === '待审批') {
+    notes.push({ type: 'info', text: '当前待团队长审批。' })
+  }
   if (req.status === '待双签') {
-    notes.push({
-      type: 'info',
-      text: `钥匙A ${req.key_holder_a?.real_name || '-'}：${req.key_holder_a_confirmed_at ? '已确认' : '等待中'}；钥匙B ${req.key_holder_b?.real_name || '-'}：${req.key_holder_b_confirmed_at ? '已确认' : '等待中'}`,
-    })
+    notes.push({ type: 'info', text: `钥匙A（${req.key_holder_a?.real_name || '-'}）：${req.key_holder_a_confirmed_at ? '已确认' : '等待确认'}` })
+    notes.push({ type: 'info', text: `钥匙B（${req.key_holder_b?.real_name || '-'}）：${req.key_holder_b_confirmed_at ? '已确认' : '等待确认'}` })
     if (req.expires_at) notes.push({ type: 'warning', text: `双签截止时间：${formatTime(req.expires_at)}` })
+  }
+  if (req.status === '已完成') {
+    notes.push({ type: 'success', text: '流程已完成，领用流水已归档。' })
   }
   if (req.status === '已驳回' && (req.leader_reject_msg || req.key_holder_reject_msg)) {
     notes.push({ type: 'error', text: `驳回原因：${req.leader_reject_msg || req.key_holder_reject_msg}` })
@@ -370,7 +418,7 @@ const handleFlowDetailAction = (actionKey: string) => {
         <template #toolbar>
           <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
             <div v-if="activeResearchTab === 'catalog'" class="relative w-full sm:w-72">
-              <input v-model="searchKeyword" class="w-full h-9 rounded-lg border border-gray-200 px-3 text-sm" placeholder="搜索名称/条码/库位" />
+              <Input v-model="searchKeyword" placeholder="搜索名称/条码/库位" />
             </div>
             <div v-else class="text-xs text-gray-500">查看领用申请流转、审批和双签状态</div>
             <div class="apple-segmented w-fit sm:ml-auto">
@@ -383,18 +431,7 @@ const handleFlowDetailAction = (actionKey: string) => {
         <template v-if="activeResearchTab === 'catalog'">
           <div v-if="loadingControlledItems" class="flex justify-center py-10"><Loader2 class="w-6 h-6 text-gray-400 animate-spin" /></div>
           <div v-else-if="filteredControlledItems.length === 0" class="apple-table-empty">暂无可申请领用的在库管控试剂。</div>
-          <div v-else class="apple-table-wrap">
-            <table class="w-full text-sm text-left">
-              <thead>
-                <tr>
-                  <th class="px-4 py-3">试剂</th>
-                  <th class="px-4 py-3">条码</th>
-                  <th class="px-4 py-3">当前位置</th>
-                  <th class="px-4 py-3">余量</th>
-                  <th class="px-4 py-3 text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody>
+          <LedgerTable v-else :columns="controlledColumns">
                 <tr
                   v-for="item in filteredControlledItems"
                   :key="item.uuid"
@@ -402,65 +439,61 @@ const handleFlowDetailAction = (actionKey: string) => {
                   :class="quickApply.reagentItemId === item.uuid ? 'bg-blue-50/60' : ''"
                   @click="selectForQuickApply(item)"
                 >
-                  <td class="px-4 py-3 font-medium text-gray-900">{{ item.reagent_catalog?.name || '未知试剂' }}</td>
-                  <td class="px-4 py-3 font-mono text-xs text-blue-600">#{{ item.uuid.substring(0, 8).toUpperCase() }}</td>
-                  <td class="px-4 py-3 text-xs text-gray-600">{{ item.location || '未分配' }}</td>
-                  <td class="px-4 py-3 text-xs text-gray-700">{{ formatAmount(item.remaining_volume, item.reagent_catalog?.unit, 'ml') }}</td>
-                  <td class="px-4 py-3 text-right">
+                  <td class="px-6 py-4 font-medium text-gray-900">{{ item.reagent_catalog?.name || '未知试剂' }}</td>
+                  <td class="px-6 py-4 font-mono text-xs text-blue-600">#{{ item.uuid.substring(0, 8).toUpperCase() }}</td>
+                  <td class="px-6 py-4 text-xs text-gray-600">{{ item.location || '未分配' }}</td>
+                  <td class="px-6 py-4 text-xs text-gray-700">{{ formatAmount(item.remaining_volume, item.reagent_catalog?.unit, 'ml') }}</td>
+                  <td class="px-6 py-4 text-right">
                     <Button size="sm" variant="outline" @click.stop="selectForQuickApply(item)">快捷申请</Button>
                   </td>
                 </tr>
-              </tbody>
-            </table>
-          </div>
+          </LedgerTable>
         </template>
 
         <template v-else>
           <div v-if="isLoading" class="flex justify-center py-10"><Loader2 class="w-6 h-6 text-gray-400 animate-spin" /></div>
           <div v-else-if="requests.length === 0" class="apple-table-empty">暂无领用申请记录。</div>
-          <div v-else class="space-y-3">
-            <div
+          <LedgerTable v-else :columns="requestColumns">
+            <tr
               v-for="req in requests"
               :key="req.id"
-              class="border rounded-xl p-4 hover:shadow-sm transition-shadow"
-              :class="latestRequestId === req.id ? 'ring-2 ring-blue-200 border-blue-300' : ''"
+              class="border-b border-gray-100 hover:bg-gray-50"
+              :class="latestRequestId === req.id ? 'bg-blue-50/60' : ''"
             >
-              <div class="flex items-start justify-between gap-4">
-                <div class="flex-1 min-w-0 space-y-2">
-                  <div class="flex items-center gap-2">
-                    <span class="font-medium text-sm text-gray-900">{{ req.reagent_item?.reagent_catalog?.name || '未知试剂' }}</span>
-                    <FlowStatusPill :status="req.status" />
-                    <Button size="sm" variant="outline" class="ml-auto h-7 px-3 text-[11px]" @click="openFlowDetail(req)">流转单</Button>
-                  </div>
-                  <div class="flex items-center gap-3 text-xs text-gray-500">
-                    <span>申请人: {{ req.requester?.real_name || '-' }}</span>
-                    <span>用量: {{ req.amount }}</span>
-                    <span v-if="req.purpose">用途: {{ req.purpose }}</span>
-                    <span>{{ formatTime(req.created_at) }}</span>
-                  </div>
-                  <FlowTimeline :steps="getBpmSteps(req)" mode="compact" />
-
-                  <div v-if="req.status === '待双签'" class="flex items-center gap-4 text-xs bg-purple-50 rounded-lg px-3 py-2 border border-purple-100">
-                    <span :class="req.key_holder_a_confirmed_at ? 'text-green-600' : 'text-gray-500'">钥匙A {{ req.key_holder_a?.real_name || '-' }}: {{ req.key_holder_a_confirmed_at ? '已确认' : '等待中' }}</span>
-                    <span :class="req.key_holder_b_confirmed_at ? 'text-green-600' : 'text-gray-500'">钥匙B {{ req.key_holder_b?.real_name || '-' }}: {{ req.key_holder_b_confirmed_at ? '已确认' : '等待中' }}</span>
-                    <span v-if="req.expires_at" class="text-orange-500">截止 {{ formatTime(req.expires_at) }}</span>
-                  </div>
-
-                  <div v-if="req.status === '已驳回' && (req.leader_reject_msg || req.key_holder_reject_msg)" class="text-xs text-red-600 bg-red-50 rounded px-2 py-1">驳回原因: {{ req.leader_reject_msg || req.key_holder_reject_msg }}</div>
-                  <div v-if="!hasFlowActions(req)" class="text-xs text-slate-400">当前角色仅可查看流程状态</div>
+              <td class="px-6 py-4">
+                <div class="font-medium text-sm text-gray-900">{{ req.reagent_item?.reagent_catalog?.name || '未知试剂' }}</div>
+                <div class="text-xs text-gray-500 mt-1">#{{ req.id }} · {{ formatTime(req.created_at) }}</div>
+              </td>
+              <td class="px-6 py-4 text-sm text-gray-700">{{ req.requester?.real_name || '-' }}</td>
+              <td class="px-6 py-4 text-sm text-gray-700">{{ req.amount }}</td>
+              <td class="px-6 py-4"><FlowStatusPill :status="req.status" /></td>
+              <td class="px-6 py-4 text-xs text-gray-600">
+                <div>时间：{{ formatTime(req.created_at) }}</div>
+                <div class="mt-1 truncate max-w-[220px]">用途：{{ req.purpose || '-' }}</div>
+                <div v-if="req.status === '已驳回' && (req.leader_reject_msg || req.key_holder_reject_msg)" class="mt-1 text-red-600">
+                  驳回：{{ req.leader_reject_msg || req.key_holder_reject_msg }}
                 </div>
-
-                <FlowActionPanel
-                  v-if="hasFlowActions(req)"
-                  class="w-full max-w-52 shrink-0"
-                  title="流程动作"
-                  description="按当前角色展示可执行动作"
-                  :actions="getFlowActions(req)"
-                  @action="(actionKey) => handleFlowAction(req, actionKey)"
-                />
-              </div>
-            </div>
-          </div>
+              </td>
+              <td class="px-6 py-4 text-right">
+                <div class="flex items-center justify-end gap-2">
+                  <Button size="sm" variant="outline" class="h-7 px-3 text-[11px]" @click="openFlowDetail(req)">流转单</Button>
+                  <Button
+                    v-for="action in getLedgerActions(req)"
+                    :key="action.key"
+                    size="sm"
+                    :variant="action.variant || 'outline'"
+                    class="h-7 px-3 text-[11px]"
+                    :disabled="action.disabled"
+                    @click="handleFlowAction(req, action.key)"
+                  >
+                    <Loader2 v-if="action.loading" class="w-3 h-3 animate-spin mr-1" />
+                    {{ action.label }}
+                  </Button>
+                  <span v-if="!hasLedgerActions(req)" class="text-xs text-slate-400">仅查看</span>
+                </div>
+              </td>
+            </tr>
+          </LedgerTable>
         </template>
       </TableSection>
 
@@ -504,44 +537,42 @@ const handleFlowDetailAction = (actionKey: string) => {
 
       <div v-if="isLoading" class="flex justify-center py-10"><Loader2 class="w-6 h-6 text-gray-400 animate-spin" /></div>
       <div v-else-if="requests.length === 0" class="apple-table-empty">暂无领用申请记录。</div>
-      <div v-else class="space-y-3">
-        <div v-for="req in requests" :key="req.id" class="border rounded-xl p-4 hover:shadow-sm transition-shadow">
-          <div class="flex items-start justify-between gap-4">
-            <div class="flex-1 min-w-0 space-y-2">
-              <div class="flex items-center gap-2">
-                <span class="font-medium text-sm text-gray-900">{{ req.reagent_item?.reagent_catalog?.name || '未知试剂' }}</span>
-                <FlowStatusPill :status="req.status" />
-                <Button size="sm" variant="outline" class="ml-auto h-7 px-3 text-[11px]" @click="openFlowDetail(req)">流转单</Button>
-              </div>
-              <div class="flex items-center gap-3 text-xs text-gray-500">
-                <span>申请人: {{ req.requester?.real_name || '-' }}</span>
-                <span>用量: {{ req.amount }}</span>
-                <span v-if="req.purpose">用途: {{ req.purpose }}</span>
-                <span>{{ formatTime(req.created_at) }}</span>
-              </div>
-              <FlowTimeline :steps="getBpmSteps(req)" mode="compact" />
-
-              <div v-if="req.status === '待双签'" class="flex items-center gap-4 text-xs bg-purple-50 rounded-lg px-3 py-2 border border-purple-100">
-                <span :class="req.key_holder_a_confirmed_at ? 'text-green-600' : 'text-gray-500'">钥匙A {{ req.key_holder_a?.real_name || '-' }}: {{ req.key_holder_a_confirmed_at ? '已确认' : '等待中' }}</span>
-                <span :class="req.key_holder_b_confirmed_at ? 'text-green-600' : 'text-gray-500'">钥匙B {{ req.key_holder_b?.real_name || '-' }}: {{ req.key_holder_b_confirmed_at ? '已确认' : '等待中' }}</span>
-                <span v-if="req.expires_at" class="text-orange-500">截止 {{ formatTime(req.expires_at) }}</span>
-              </div>
-
-              <div v-if="req.status === '已驳回' && (req.leader_reject_msg || req.key_holder_reject_msg)" class="text-xs text-red-600 bg-red-50 rounded px-2 py-1">驳回原因: {{ req.leader_reject_msg || req.key_holder_reject_msg }}</div>
-              <div v-if="!hasFlowActions(req)" class="text-xs text-slate-400">当前角色仅可查看流程状态</div>
+      <LedgerTable v-else :columns="requestColumns">
+        <tr v-for="req in requests" :key="req.id" class="border-b border-gray-100 hover:bg-gray-50">
+          <td class="px-6 py-4">
+            <div class="font-medium text-sm text-gray-900">{{ req.reagent_item?.reagent_catalog?.name || '未知试剂' }}</div>
+            <div class="text-xs text-gray-500 mt-1">#{{ req.id }} · {{ formatTime(req.created_at) }}</div>
+          </td>
+          <td class="px-6 py-4 text-sm text-gray-700">{{ req.requester?.real_name || '-' }}</td>
+          <td class="px-6 py-4 text-sm text-gray-700">{{ req.amount }}</td>
+          <td class="px-6 py-4"><FlowStatusPill :status="req.status" /></td>
+          <td class="px-6 py-4 text-xs text-gray-600">
+            <div>时间：{{ formatTime(req.created_at) }}</div>
+            <div class="mt-1 truncate max-w-[220px]">用途：{{ req.purpose || '-' }}</div>
+            <div v-if="req.status === '已驳回' && (req.leader_reject_msg || req.key_holder_reject_msg)" class="mt-1 text-red-600">
+              驳回：{{ req.leader_reject_msg || req.key_holder_reject_msg }}
             </div>
-
-            <FlowActionPanel
-              v-if="hasFlowActions(req)"
-              class="w-full max-w-52 shrink-0"
-              title="流程动作"
-              description="按当前角色展示可执行动作"
-              :actions="getFlowActions(req)"
-              @action="(actionKey) => handleFlowAction(req, actionKey)"
-            />
-          </div>
-        </div>
-      </div>
+          </td>
+          <td class="px-6 py-4 text-right">
+            <div class="flex items-center justify-end gap-2">
+              <Button size="sm" variant="outline" class="h-7 px-3 text-[11px]" @click="openFlowDetail(req)">流转单</Button>
+              <Button
+                v-for="action in getLedgerActions(req)"
+                :key="action.key"
+                size="sm"
+                :variant="action.variant || 'outline'"
+                class="h-7 px-3 text-[11px]"
+                :disabled="action.disabled"
+                @click="handleFlowAction(req, action.key)"
+              >
+                <Loader2 v-if="action.loading" class="w-3 h-3 animate-spin mr-1" />
+                {{ action.label }}
+              </Button>
+              <span v-if="!hasLedgerActions(req)" class="text-xs text-slate-400">仅查看</span>
+            </div>
+          </td>
+        </tr>
+      </LedgerTable>
     </TableSection>
 
     <Transition enter-active-class="transition ease-out duration-200" enter-from-class="opacity-0" enter-to-class="opacity-100" leave-active-class="transition ease-in duration-150" leave-from-class="opacity-100" leave-to-class="opacity-0">

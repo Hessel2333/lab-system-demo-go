@@ -6,14 +6,15 @@ import Badge from '@/components/ui/Badge.vue'
 import Input from '@/components/ui/Input.vue'
 import Dialog from '@/components/ui/Dialog.vue'
 import TableSection from '@/components/ui/TableSection.vue'
+import FlowDetailDialog from '@/components/workflow/FlowDetailDialog.vue'
 import { CheckCircle, Clock, Search, Package, MapPin, User } from 'lucide-vue-next'
 import LedgerTable from './LedgerTable.vue'
 import { toast } from 'vue-sonner'
 import { useActionFeedback } from '@/lib/feedback'
+import { getProcurementReceiveDisplayStatus, getProcurementReceiveStatusVariant } from '@/lib/reagent-status'
 
 const pendingItems = ref<any[]>([])
 const loading = ref(false)
-const receiveInputs = ref<Record<number, number>>({})
 const searchQuery = ref('')
 const labelDialogOpen = ref(false)
 const labelPrintUUIDs = ref<string[]>([])
@@ -39,7 +40,7 @@ const filteredStockItems = computed(() => {
         result = result.filter(i => 
             i.reagent_catalog?.name?.toLowerCase().includes(q) ||
             String(i.uuid).toLowerCase().includes(q) ||
-            String(i.reagent_request_id).toLowerCase().includes(q)
+            String(i.batch_number || '').toLowerCase().includes(q)
         )
     }
     return result
@@ -51,10 +52,6 @@ const fetchPendingReceives = async () => {
     try {
         const res = await axios.get('/api/reagents/pending-receives')
         pendingItems.value = res.data
-        // Initialize default input to the remaining quantity
-        pendingItems.value.forEach(item => {
-             receiveInputs.value[item.id] = item.quantity - item.received_quantity
-        })
     } catch (e: any) {
         toast.error(e.response?.data?.error || "获取待收货明细失败")
     } finally {
@@ -63,9 +60,9 @@ const fetchPendingReceives = async () => {
 }
 
 const handleReceive = async (item: any) => {
-    const qty = receiveInputs.value[item.id]
-    if (!qty || qty <= 0 || qty > (item.quantity - item.received_quantity)) {
-        toast.error("输入的收货数量无效")
+    const qty = Math.max((item.quantity || 0) - (item.received_quantity || 0), 0)
+    if (qty <= 0) {
+        toast.error("该条目无需重复确认到货")
         return
     }
 
@@ -81,8 +78,8 @@ const handleReceive = async (item: any) => {
         await fetchPendingReceives()
       },
       {
-        successMessage: `成功收货 ${qty} 瓶，已生成二维码。`,
-        errorMessage: '收货提交失败'
+        successMessage: `到货确认成功 ${qty} 瓶，已生成二维码。`,
+        errorMessage: '到货确认失败'
       }
     ).catch(() => {})
 }
@@ -103,16 +100,12 @@ const printLabels = async () => {
     ).catch(() => {})
 }
 
-const getStatusVariant = (status: string) => {
-   if (status === '待收货') return 'secondary'
-   if (status === '部分收货') return 'warning'
-   return 'default'
-}
-
 // === 新增：未入库追踪逻辑 ===
 const activeTab = ref<'receiving' | 'tracking'>('receiving')
 const pendingStockItems = ref<any[]>([])
 const loadingTracking = ref(false)
+const flowDialogOpen = ref(false)
+const flowDialogContext = ref<{ type: 'receiving' | 'tracking'; item: any } | null>(null)
 
 const fetchPendingStockItems = async () => {
     loadingTracking.value = true
@@ -135,24 +128,168 @@ const isOverdue = (createdAt: string) => {
 
 const handleRemind = (item: any) => {
     // 模拟的催办动作
-    toast.success(`已向 ${item.reagent_request?.requestor?.real_name || '申请人'} 发送超期入库提醒！`)
+    toast.success(`已向研发值班组发送“条码 #${String(item.uuid || '').substring(0, 8).toUpperCase()}”超期入库提醒！`)
+}
+
+const openFlowDialog = (type: 'receiving' | 'tracking', item: any) => {
+    flowDialogContext.value = { type, item }
+    flowDialogOpen.value = true
+}
+
+const formatFlowTime = (time?: string) => {
+    if (!time) return ''
+    return new Date(time).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+const flowTitle = computed(() => flowDialogContext.value?.type === 'receiving' ? '到货确认流转单' : '待入库跟进流转单')
+
+const flowSubtitle = computed(() => {
+    const ctx = flowDialogContext.value
+    if (!ctx) return ''
+    if (ctx.type === 'receiving') return ctx.item?.reagent_name || '到货确认'
+    return ctx.item?.reagent_catalog?.name || '待入库台账'
+})
+
+const flowStatus = computed(() => {
+    const ctx = flowDialogContext.value
+    if (!ctx) return '-'
+    if (ctx.type === 'receiving') return getProcurementReceiveDisplayStatus(ctx.item?.receive_status)
+    return isOverdue(ctx.item?.created_at) ? '超24H未入库' : '等待研发领走'
+})
+
+const flowMeta = computed(() => {
+    const ctx = flowDialogContext.value
+    if (!ctx) return []
+    if (ctx.type === 'receiving') {
+        const item = ctx.item
+        return [
+            { label: '订单号', value: item.batch?.order_number || '-' },
+            { label: '供应商', value: item.supplier || '-' },
+            { label: '采购数量', value: `${item.quantity || 0}${item.unit || '瓶'}` },
+            { label: '导入时间', value: formatFlowTime(item.batch?.created_at || item.created_at) || '-' },
+        ]
+    }
+    const item = ctx.item
+    return [
+        { label: '条码', value: `#${String(item.uuid || '').substring(0, 8).toUpperCase()}` },
+        { label: '批次号', value: item.batch_number || '-' },
+        { label: 'CAS', value: item.reagent_catalog?.cas_number || '-' },
+        { label: '当前位置', value: item.location || '暂存区' },
+        { label: '到货时间', value: formatFlowTime(item.created_at) || '-' },
+    ]
+})
+
+const flowSteps = computed(() => {
+    const ctx = flowDialogContext.value
+    if (!ctx) return []
+
+    if (ctx.type === 'receiving') {
+        const item = ctx.item
+        const isFullyReceived = item.receive_status === '已收货'
+        const hasReceived = Number(item.received_quantity || 0) > 0
+        return [
+            {
+                key: 'import',
+                label: '采购导入',
+                state: 'completed' as const,
+                description: `批次 ${item.batch?.order_number || '-'} 已导入系统`,
+                operator: '采购人员',
+                time: formatFlowTime(item.batch?.created_at || item.created_at),
+            },
+            {
+                key: 'receive',
+                label: '到货确认',
+                state: isFullyReceived ? 'completed' as const : (hasReceived ? 'current' as const : 'pending' as const),
+                description: isFullyReceived ? '采购人员已完成到货确认' : '等待采购人员确认到货',
+                operator: '采购人员',
+                time: hasReceived ? formatFlowTime(item.updated_at) : undefined,
+            },
+            {
+                key: 'staging',
+                label: '条码生成与暂存',
+                state: hasReceived ? 'completed' as const : 'pending' as const,
+                description: hasReceived ? '已生成条码并转入暂存区等待研发入库' : '到货确认后自动生成条码并进入暂存区',
+                operator: hasReceived ? '系统' : undefined,
+            },
+            {
+                key: 'checkin',
+                label: '研发扫码入库',
+                state: 'pending' as const,
+                description: '研发人员在到货台账选择实验室与试剂柜后完成入库',
+            },
+        ]
+    }
+
+    const item = ctx.item
+    const overdue = isOverdue(item.created_at)
+    return [
+        {
+            key: 'receive',
+            label: '到货确认',
+            state: 'completed' as const,
+            description: '采购已完成到货确认并生成瓶身条码',
+            operator: '采购人员',
+            time: formatFlowTime(item.created_at),
+        },
+        {
+            key: 'staging',
+            label: '暂存待入库',
+            state: 'current' as const,
+            description: overdue ? '条目已超 24h 未入库，建议催办' : '等待研发人员领走并扫码入库',
+        },
+        {
+            key: 'checkin',
+            label: '研发扫码入库',
+            state: 'pending' as const,
+            description: '完成后该条目将从待入库台账移除',
+        },
+    ]
+})
+
+const flowNotes = computed(() => {
+    const ctx = flowDialogContext.value
+    if (!ctx) return []
+    if (ctx.type === 'receiving') {
+        return [
+            { type: 'info' as const, text: '该流转单仅展示到货执行进度与后续入库节点。' },
+        ]
+    }
+    return [
+        { type: isOverdue(ctx.item.created_at) ? 'warning' as const : 'info' as const, text: isOverdue(ctx.item.created_at) ? '该条码已超过 24 小时未入库。' : '条码已进入暂存区，等待研发执行扫码入库。' },
+    ]
+})
+
+const flowActions = computed(() => {
+    const ctx = flowDialogContext.value
+    if (!ctx) return []
+    if (ctx.type === 'tracking' && isOverdue(ctx.item.created_at)) {
+        return [{ key: 'remind', label: '发送催办', variant: 'destructive' as const }]
+    }
+    return []
+})
+
+const onFlowAction = (actionKey: string) => {
+    if (actionKey !== 'remind') return
+    const ctx = flowDialogContext.value
+    if (!ctx || ctx.type !== 'tracking') return
+    handleRemind(ctx.item)
 }
 
 const receivingColumns = [
   { key: 'reagent', label: '试剂信息' },
   { key: 'supplier', label: '采购供应商' },
-  { key: 'progress', label: '申量及进度' },
-  { key: 'status', label: '验收状态' },
-  { key: 'actions', label: '执行点收操作', align: 'right' as const },
+  { key: 'progress', label: '采购数量' },
+  { key: 'status', label: '到货状态' },
+  { key: 'actions', label: '操作', align: 'right' as const },
 ]
 
 const trackingColumns = [
   { key: 'reagent', label: '试剂信息' },
-  { key: 'request', label: '来源申请' },
+  { key: 'batch', label: '批次来源' },
   { key: 'location', label: '存放位置' },
-  { key: 'status', label: '台账状态' },
+  { key: 'status', label: '入库状态' },
   { key: 'time', label: '到货时间' },
-  { key: 'actions', label: '跟进操作', align: 'right' as const },
+  { key: 'actions', label: '操作', align: 'right' as const },
 ]
 
 onMounted(() => {
@@ -176,7 +313,7 @@ onMounted(() => {
         <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
           <div class="relative w-full sm:w-80">
               <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
-              <Input v-model="searchQuery" class="pl-9" placeholder="搜索试剂名称、批次号、申请单号..." />
+              <Input v-model="searchQuery" class="pl-9" placeholder="搜索试剂名称、批次号、条码..." />
           </div>
           <div class="apple-segmented w-fit sm:ml-auto">
             <button @click="activeTab='receiving'"
@@ -194,9 +331,9 @@ onMounted(() => {
         </div>
       </template>
 
-        <!-- Tab 1: 待点检验收清单 -->
+        <!-- Tab 1: 到货确认清单 -->
         <div v-show="activeTab === 'receiving'">
-      <div v-if="loading" class="text-center py-10 text-gray-400">正在加载待收货在途清单...</div>
+      <div v-if="loading" class="text-center py-10 text-gray-400">正在加载待到货确认清单...</div>
       <div v-else-if="filteredPendingItems.length === 0" class="apple-table-empty">目前没有待入库或待确认的试剂。</div>
       
       <LedgerTable v-else :columns="receivingColumns">
@@ -230,34 +367,23 @@ onMounted(() => {
               <!-- 数量明细 -->
               <td class="px-6 py-4">
                 <div class="text-sm font-medium text-gray-900">
-                  <span class="text-gray-500 font-normal">总量:</span> {{ item.quantity }}{{item.unit}} 
-                  <span class="text-gray-300 mx-1">|</span> 
-                  <span class="text-gray-500 font-normal">待收:</span> <span class="text-blue-600">{{ item.quantity - item.received_quantity }}</span>
-                </div>
-                <div class="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                  <Clock class="w-3 h-3 text-emerald-500" /> 已点收: <span class="text-emerald-600">{{ item.received_quantity }}</span>
+                  <span class="text-gray-500 font-normal">采购数量:</span> {{ item.quantity }}{{item.unit}} 
                 </div>
               </td>
 
               <!-- 状态 -->
               <td class="px-6 py-4">
-                <Badge :variant="getStatusVariant(item.receive_status)">{{ item.receive_status }}</Badge>
+                <Badge :variant="getProcurementReceiveStatusVariant(item.receive_status)">{{ getProcurementReceiveDisplayStatus(item.receive_status) }}</Badge>
               </td>
 
-              <!-- 点收动作 -->
+              <!-- 到货动作 -->
               <td class="px-6 py-4 text-right">
-                <div class="flex items-center justify-end gap-3 shrink-0">
-                  <div class="flex items-center gap-2">
-                    <label class="text-[11px] font-medium text-gray-500 whitespace-nowrap">本次赋码点收</label>
-                    <Input type="number" 
-                        v-model="receiveInputs[item.id]" 
-                        class="w-16 text-center h-8 text-xs focus:ring-1 focus:ring-blue-500" 
-                        :min="1" 
-                        :max="item.quantity - item.received_quantity" 
-                    />
-                  </div>
+                <div class="flex items-center justify-end gap-2 shrink-0">
+                  <Button @click="openFlowDialog('receiving', item)" variant="outline" size="sm" class="h-8 text-xs whitespace-nowrap">
+                      流转单
+                  </Button>
                   <Button @click="handleReceive(item)" :disabled="isPending(`receive-${item.id}`)" variant="primary" size="sm" class="h-8 shadow-sm text-xs px-3 whitespace-nowrap">
-                      <CheckCircle class="w-3.5 h-3.5 mr-1" />确认
+                      <CheckCircle class="w-3.5 h-3.5 mr-1" />确认到货
                   </Button>
                 </div>
               </td>
@@ -299,10 +425,10 @@ onMounted(() => {
               <!-- 来源单据 -->
               <td class="px-6 py-4">
                 <div class="flex flex-col gap-1 text-sm text-gray-700">
-                  <span class="font-medium text-gray-900">申购单 #{{ item.reagent_request_id || '--' }}</span>
+                  <span class="font-medium text-gray-900">批次号 {{ item.batch_number || '--' }}</span>
                   <div class="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">
                     <User class="w-3.5 h-3.5" />
-                    <span>{{ item.reagent_request?.requestor?.real_name || '无法追溯' }} ({{ item.reagent_request?.requestor?.department?.name || '未知组别' }})</span>
+                    <span>条码 #{{ String(item.uuid).substring(0, 8).toUpperCase() }}</span>
                   </div>
                 </div>
               </td>
@@ -318,7 +444,7 @@ onMounted(() => {
               <!-- 台账状态 -->
               <td class="px-6 py-4">
                 <Badge v-if="isOverdue(item.created_at)" variant="destructive" class="px-1.5">超24H未入库</Badge>
-                <Badge v-else variant="info" class="px-1.5 py-0.5">等待研发领走</Badge>
+                <Badge v-else variant="info" class="px-1.5 py-0.5">待研发入库</Badge>
               </td>
 
               <!-- 时间 -->
@@ -331,15 +457,17 @@ onMounted(() => {
 
               <!-- 催办动作 -->
               <td class="px-6 py-4 text-right">
-                <Button v-if="isOverdue(item.created_at)" 
-                        @click="handleRemind(item)" 
-                        variant="destructive" size="sm" class="flex items-center shadow-sm text-xs h-8 ml-auto whitespace-nowrap">
-                    <Clock class="w-3.5 h-3.5 mr-1" />
-                    一键催办入库
-                </Button>
-                <div v-else class="text-xs font-medium text-blue-600 flex items-center justify-end gap-1.5">
-                  <Clock class="w-3.5 h-3.5" />
-                  <span class="whitespace-nowrap">研发未收走</span>
+                <div class="flex items-center justify-end gap-2">
+                  <Button @click="openFlowDialog('tracking', item)" variant="outline" size="sm" class="h-8 text-xs whitespace-nowrap">
+                    流转单
+                  </Button>
+                  <Button v-if="isOverdue(item.created_at)" 
+                          @click="handleRemind(item)" 
+                          variant="destructive" size="sm" class="flex items-center shadow-sm text-xs h-8 whitespace-nowrap">
+                      <Clock class="w-3.5 h-3.5 mr-1" />
+                      一键催办
+                  </Button>
+                  <span v-else class="text-xs text-slate-400">仅查看</span>
                 </div>
               </td>
             </tr>
@@ -363,5 +491,18 @@ onMounted(() => {
         </Button>
       </template>
     </Dialog>
+
+    <FlowDetailDialog
+      :open="flowDialogOpen"
+      :title="flowTitle"
+      :subtitle="flowSubtitle"
+      :status="flowStatus"
+      :meta="flowMeta"
+      :steps="flowSteps"
+      :actions="flowActions"
+      :notes="flowNotes"
+      @close="flowDialogOpen = false"
+      @action="onFlowAction"
+    />
   </div>
 </template>

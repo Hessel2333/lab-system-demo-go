@@ -11,8 +11,11 @@ import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Dialog from '@/components/ui/Dialog.vue'
 import TableSection from '@/components/ui/TableSection.vue'
+import Input from '@/components/ui/Input.vue'
+import LedgerTable from './LedgerTable.vue'
 import ItemLifecycleDialog from '@/components/reagents/ItemLifecycleDialog.vue'
 import { formatAmount, formatNumber, formatRatio, normalizeUnit } from '@/lib/quantity'
+import { getInventoryDisplayStatus, getInventoryStatusVariant, isInStorageStatus } from '@/lib/reagent-status'
 
 // ——— 类型定义 ———
 interface ReagentItem {
@@ -39,9 +42,6 @@ interface ReagentItem {
     is_controlled: boolean
     unit: string
   }
-  reagent_request?: {
-    requestor?: { real_name: string }
-  }
 }
 
 interface TeamGroup {
@@ -62,12 +62,24 @@ const statusFilter = ref('全部')
 const cabinetFilter = ref('全部')
 const currentPage = ref(1)
 const pageSize = 15
-const statusOptions = ['全部', '在库', '已到货', '已耗尽']
+const statusOptions = ['全部', '已入库', '已到货', '已耗尽']
 const cabinetOptions = ['全部', '普通柜', '管控柜']
+const tableColumns = [
+  { key: 'reagent', label: '试剂名称' },
+  { key: 'barcode', label: '系统条码' },
+  { key: 'remaining', label: '剩余量' },
+  { key: 'cabinet', label: '试剂柜' },
+  { key: 'location', label: '库位' },
+  { key: 'batch', label: '批次来源' },
+  { key: 'status', label: '状态' },
+  { key: 'expiry', label: '有效期' },
+  { key: 'actions', label: '操作', align: 'right' as const },
+]
 // 辅助：获取柜子显示名称
 const getCabinetName = (item: ReagentItem) => item.cabinet?.name ?? (item.cabinet_id > 0 ? `柜#${item.cabinet_id}` : null)
 const isControlledCabinet = (item: ReagentItem) => item.cabinet?.cabinet_type === '易制毒制爆试剂柜'
 const getItemLocation = (item: ReagentItem) => item.cabinet?.location || item.location || '—'
+const isControlledItem = (item: ReagentItem) => !!item.reagent_catalog?.is_controlled
 
 // ——— 团队视图状态 ———
 const allGroups = ref<TeamGroup[]>([])
@@ -98,7 +110,7 @@ const emit = defineEmits(['switch-to-arrival'])
 const pendingArrivals = ref<ReagentItem[]>([])
 const fetchPendingArrivals = async () => {
   try {
-    const res = await axios.get('/api/reagents/items?status=已到货&requestor_id=1')
+    const res = await axios.get('/api/reagents/items?status=已到货')
     pendingArrivals.value = res.data || []
   } catch (e) {
     console.error('Failed to fetch pending arrivals', e)
@@ -139,7 +151,7 @@ onMounted(fetchAll)
 // ——— 表格视图计算 ———
 const filteredItems = computed(() => {
   let r = allItems.value
-  if (statusFilter.value !== '全部') r = r.filter(i => i.status === statusFilter.value || getStatusLabel(i.status) === statusFilter.value)
+  if (statusFilter.value !== '全部') r = r.filter(i => getInventoryDisplayStatus(i.status) === statusFilter.value)
   if (cabinetFilter.value === '普通柜') r = r.filter(i => i.cabinet?.cabinet_type === '普通试剂柜')
   else if (cabinetFilter.value === '管控柜') r = r.filter(i => i.cabinet?.cabinet_type === '易制毒制爆试剂柜')
   if (searchQuery.value) {
@@ -184,10 +196,19 @@ const isExpanded = (key: string) => expandedCategories.value.has(key)
 
 // ——— 操作：领用 ———
 const openConsumeDialog = (item: ReagentItem) => {
+  if (!isControlledItem(item)) {
+    toast.error('普通试剂不支持逐次消耗，请直接执行“用尽”')
+    return
+  }
   consumeDialog.value = { isOpen: true, item, volume: 1, remarks: '' }
 }
 const submitConsume = async () => {
   if (!consumeDialog.value.item) return
+  if (!isControlledItem(consumeDialog.value.item)) {
+    toast.error('普通试剂不支持逐次消耗，请直接执行“用尽”')
+    consumeDialog.value.isOpen = false
+    return
+  }
   if (consumeDialog.value.volume <= 0) { toast.error('领用量必须大于0'); return }
   try {
     await axios.put(`/api/reagents/items/${consumeDialog.value.item.uuid}/consume`, {
@@ -241,17 +262,8 @@ const formatDate = (d: string) => {
   if (isNaN(dt.getFullYear()) || dt.getFullYear() < 1900) return '-'
   return dt.toLocaleDateString('zh-CN')
 }
-const getStatusLabel = (status: string) => {
-  const map: Record<string, string> = { InStorage: '在库', Arrived: '已到货', Used: '已耗尽' }
-  return map[status] || status
-}
-const getStatusVariant = (status: string): any => {
-  const s = getStatusLabel(status)
-  if (s === '在库') return 'success'
-  if (s === '已到货') return 'info'
-  if (s === '已耗尽') return 'default'
-  return 'default'
-}
+const getStatusLabel = (status: string) => getInventoryDisplayStatus(status)
+const getStatusVariant = (status: string): any => getInventoryStatusVariant(status)
 const getRemainingColor = (pct: number) => {
   if (pct <= 15) return 'bg-red-500'
   if (pct <= 40) return 'bg-amber-400'
@@ -269,7 +281,7 @@ const getRemainingColor = (pct: number) => {
                 <AlertTriangle class="h-5 w-5" />
             </div>
             <div>
-                <p class="text-amber-900 font-bold tracking-tight">您有 {{ pendingArrivals.length }} 件申购试剂已到货</p>
+                <p class="text-amber-900 font-bold tracking-tight">您有 {{ pendingArrivals.length }} 件试剂待入库</p>
                 <p class="text-amber-700 text-xs mt-0.5">实物已送至暂存区，请尽快领取并办理入库以进入库存台账</p>
             </div>
         </div>
@@ -278,7 +290,7 @@ const getRemainingColor = (pct: number) => {
         </Button>
     </div>
 
-    <TableSection title="库存台账" description="统一展示团队库存与全库明细，支持试剂消耗登记与耗尽核销">
+    <TableSection title="库存台账" description="统一展示团队库存与全库明细：管控试剂支持消耗登记，普通试剂仅执行耗尽核销">
       <template #actions>
         <Button @click="fetchAll" variant="outline" size="sm">刷新台账</Button>
       </template>
@@ -287,7 +299,7 @@ const getRemainingColor = (pct: number) => {
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 w-full">
           <div v-if="viewMode === 'table'" class="relative w-full sm:w-80">
             <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-            <input v-model="searchQuery" class="w-full h-9 pl-9 pr-3 text-sm bg-white border border-gray-200 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" placeholder="搜索名称/CAS/库位..." />
+            <Input v-model="searchQuery" class="pl-9" placeholder="搜索名称/CAS/库位..." />
           </div>
           <div v-else class="text-sm text-gray-500">按团队分组展示，共 {{ allGroups.length }} 个团队</div>
 
@@ -375,11 +387,26 @@ const getRemainingColor = (pct: number) => {
                   <AlertTriangle v-if="isNearExpiry(item)" class="w-3 h-3" />
                   {{ formatDate(item.expiry_date) }}
                 </span>
-                <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-200 ml-auto pl-4 border-l border-gray-100 shrink-0 scale-95 group-hover:scale-100">
-                  <Button @click.stop="openConsumeDialog(item)" variant="outline" size="sm" class="h-7 px-2 text-[11px] border-blue-100 text-blue-600 hover:bg-blue-50">
+                <div class="flex items-center gap-2 ml-auto pl-4 border-l border-gray-100 shrink-0">
+                  <Button @click.stop="openLifecycleDialog(item.uuid)" variant="outline" size="sm" class="h-7 px-2 text-[11px]">
+                    流转单
+                  </Button>
+                  <Button
+                    v-if="isInStorageStatus(item.status) && isControlledItem(item)"
+                    @click.stop="openConsumeDialog(item)"
+                    variant="outline"
+                    size="sm"
+                    class="h-7 px-2 text-[11px] border-blue-100 text-blue-600 hover:bg-blue-50"
+                  >
                     <MinusCircle class="w-3.5 h-3.5 mr-1" /> 使用
                   </Button>
-                  <Button @click.stop="markAsEmpty(item)" variant="ghost" size="sm" class="h-7 px-2 text-[11px] text-gray-400 hover:text-red-600 hover:bg-red-50">
+                  <Button
+                    v-else-if="isInStorageStatus(item.status)"
+                    @click.stop="markAsEmpty(item)"
+                    variant="destructive"
+                    size="sm"
+                    class="h-7 px-2 text-[11px]"
+                  >
                     <Trash2 class="w-3.5 h-3.5 mr-1" /> 用尽
                   </Button>
                 </div>
@@ -403,7 +430,7 @@ const getRemainingColor = (pct: number) => {
         <div class="apple-segmented sm:ml-auto">
           <button v-for="c in cabinetOptions" :key="c" @click="setCabinetFilter(c)"
             :class="['apple-segmented-btn', cabinetFilter === c ? 'apple-segmented-btn-active text-amber-700' : 'apple-segmented-btn-idle']">
-            {{ c === '全部' ? '全部柜' : c === '管控柜' ? '⚠️ 管控柜' : c }}
+            {{ c === '全部' ? '全部柜' : c }}
           </button>
         </div>
       </div>
@@ -412,75 +439,72 @@ const getRemainingColor = (pct: number) => {
         <Loader2 class="h-8 w-8 animate-spin text-gray-400" />
       </div>
       <div v-else-if="filteredItems.length === 0" class="apple-table-empty">暂无匹配的试剂库存记录。</div>
-      <div v-else class="apple-table-wrap">
-        <table class="w-full text-sm text-left">
-          <thead class="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th class="px-4 py-3">试剂名称</th>
-              <th class="px-4 py-3">系统条码</th>
-              <th class="px-4 py-3">剩余量</th>
-              <th class="px-4 py-3">试剂柜</th>
-              <th class="px-4 py-3">库位</th>
-              <th class="px-4 py-3">申购人</th>
-              <th class="px-4 py-3">状态</th>
-              <th class="px-4 py-3">有效期</th>
-              <th class="px-4 py-3">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in paginatedItems" :key="item.uuid" class="border-b border-gray-100 hover:bg-gray-50 group">
-              <td class="px-4 py-3 font-medium text-gray-900">
-                <button @click="openLifecycleDialog(item.uuid)" class="hover:text-blue-600 hover:underline text-left" title="查看全生命周期档案">
-                  {{ item.reagent_catalog?.name || '未知' }}
-                </button>
-                <span class="block text-xs text-gray-400 font-normal">CAS: {{ item.reagent_catalog?.cas_number }}</span>
-              </td>
-              <td class="px-4 py-3 font-mono text-xs text-blue-600">
-                <button @click="openLifecycleDialog(item.uuid)" class="hover:underline flex items-center gap-1" title="查看生命周期档案">
-                  <FileText class="w-3 h-3" /> <span :title="item.uuid">{{ item.uuid.substring(0,8) }}…</span>
-                </button>
-              </td>
-              <td class="px-4 py-3">
-                <div class="min-w-[90px]">
-                  <div class="flex items-center justify-between text-[10px] text-gray-500 mb-1">
-                    <span>{{ formatAmount(item.remaining_volume, item.reagent_catalog?.unit, 'ml') }}</span>
-                    <span>/ {{ formatNumber(item.capacity) }}</span>
-                  </div>
-                  <div class="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div :class="['h-full rounded-full transition-all', getRemainingColor(remainingPct(item))]" :style="{ width: remainingPct(item) + '%' }"></div>
-                  </div>
-                </div>
-              </td>
-              <td class="px-4 py-3">
-                <span v-if="item.cabinet_id > 0" :class="['text-xs px-2 py-0.5 border rounded font-medium', isControlledCabinet(item) ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-600 border-blue-200']">
-                  {{ getCabinetName(item) }}
-                </span>
-                <span v-else class="text-xs text-gray-300">—</span>
-              </td>
-              <td class="px-4 py-3 text-xs text-gray-600">{{ getItemLocation(item) }}</td>
-              <td class="px-4 py-3 text-gray-700 text-xs">
-                {{ item.reagent_request?.requestor?.real_name || 'System' }}
-              </td>
-              <td class="px-4 py-3">
-                <Badge :variant="getStatusVariant(item.status)">{{ getStatusLabel(item.status) }}</Badge>
-              </td>
-              <td class="px-4 py-3">
-                <span :class="['text-xs', getExpiryInfo(item.expiry_date).class]">{{ getExpiryInfo(item.expiry_date).text }}</span>
-              </td>
-              <td class="px-4 py-3">
-                <div class="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200" v-if="item.status === '在库'">
-                  <Button @click="openConsumeDialog(item)" variant="outline" size="sm" class="h-7 px-2 text-[11px] border-blue-100 text-blue-600 hover:bg-blue-50">
-                    使用
-                  </Button>
-                  <Button @click="markAsEmpty(item)" variant="ghost" size="sm" class="h-7 px-2 text-[11px] text-gray-400 hover:text-red-500 hover:bg-red-50">
-                    用尽
-                  </Button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <LedgerTable v-else :columns="tableColumns">
+        <tr v-for="item in paginatedItems" :key="item.uuid" class="border-b border-gray-100 hover:bg-gray-50 group">
+          <td class="px-6 py-4 font-medium text-gray-900">
+            <button @click="openLifecycleDialog(item.uuid)" class="hover:text-blue-600 hover:underline text-left" title="查看全生命周期档案">
+              {{ item.reagent_catalog?.name || '未知' }}
+            </button>
+            <span class="block text-xs text-gray-400 font-normal">CAS: {{ item.reagent_catalog?.cas_number }}</span>
+          </td>
+          <td class="px-6 py-4 font-mono text-xs text-blue-600">
+            <button @click="openLifecycleDialog(item.uuid)" class="hover:underline flex items-center gap-1" title="查看生命周期档案">
+              <FileText class="w-3 h-3" /> <span :title="item.uuid">{{ item.uuid.substring(0,8) }}…</span>
+            </button>
+          </td>
+          <td class="px-6 py-4">
+            <div class="min-w-[90px]">
+              <div class="mb-1 flex items-center justify-between text-[10px] text-gray-500">
+                <span>{{ formatAmount(item.remaining_volume, item.reagent_catalog?.unit, 'ml') }}</span>
+                <span>/ {{ formatNumber(item.capacity) }}</span>
+              </div>
+              <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                <div :class="['h-full rounded-full transition-all', getRemainingColor(remainingPct(item))]" :style="{ width: remainingPct(item) + '%' }"></div>
+              </div>
+            </div>
+          </td>
+          <td class="px-6 py-4">
+            <span v-if="item.cabinet_id > 0" :class="['text-xs px-2 py-0.5 border rounded font-medium', isControlledCabinet(item) ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-600 border-blue-200']">
+              {{ getCabinetName(item) }}
+            </span>
+            <span v-else class="text-xs text-gray-300">—</span>
+          </td>
+          <td class="px-6 py-4 text-xs text-gray-600">{{ getItemLocation(item) }}</td>
+          <td class="px-6 py-4 text-xs text-gray-700">{{ item.batch_number || '系统批次' }}</td>
+          <td class="px-6 py-4">
+            <Badge :variant="getStatusVariant(item.status)">{{ getStatusLabel(item.status) }}</Badge>
+          </td>
+          <td class="px-6 py-4">
+            <span :class="['text-xs', getExpiryInfo(item.expiry_date).class]">{{ getExpiryInfo(item.expiry_date).text }}</span>
+          </td>
+          <td class="px-6 py-4 text-right">
+            <div class="flex items-center justify-end gap-1.5">
+              <Button @click="openLifecycleDialog(item.uuid)" variant="outline" size="sm" class="h-7 px-2 text-[11px]">
+                流转单
+              </Button>
+              <Button
+                v-if="isInStorageStatus(item.status) && isControlledItem(item)"
+                @click="openConsumeDialog(item)"
+                variant="outline"
+                size="sm"
+                class="h-7 px-2 text-[11px] border-blue-100 text-blue-600 hover:bg-blue-50"
+              >
+                使用
+              </Button>
+              <Button
+                v-else-if="isInStorageStatus(item.status)"
+                @click="markAsEmpty(item)"
+                variant="destructive"
+                size="sm"
+                class="h-7 px-2 text-[11px]"
+              >
+                用尽
+              </Button>
+              <span v-else class="text-xs text-slate-400">仅查看</span>
+            </div>
+          </td>
+        </tr>
+      </LedgerTable>
 
       <!-- 分页 -->
       <div v-if="totalPages > 1" class="flex items-center justify-between pt-3">
@@ -497,7 +521,7 @@ const getRemainingColor = (pct: number) => {
     <Dialog :open="consumeDialog.isOpen" size="sm" @close="consumeDialog.isOpen = false">
       <div class="p-6 space-y-6">
         <div>
-          <h3 class="text-xl font-bold text-gray-900 tracking-tight">登记试剂消耗</h3>
+          <h3 class="text-xl font-bold text-gray-900 tracking-tight">登记管控试剂消耗</h3>
           <p class="text-sm text-gray-500 mt-1" v-if="consumeDialog.item">
             条码: <span class="font-mono text-blue-600 font-medium">#{{ consumeDialog.item.uuid.substring(0,8).toUpperCase() }}</span> — {{ consumeDialog.item.reagent_catalog?.name }}
           </p>

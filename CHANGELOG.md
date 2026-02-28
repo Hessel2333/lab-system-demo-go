@@ -2,6 +2,151 @@
 
 记录系统在近期迭代中实施的具体业务逻辑优化与 Bug 修复。
 
+## [2026-02-28] - 到货/库存台账统一收口（第四轮）
+
+### ✅ 到货台账（采购/研发）动作位统一
+
+- `ProcurementReceiving.vue`：
+  - 列标题统一为“到货状态/入库状态/操作”口径；
+  - 待入库页操作区移除描述性文本，统一为“流转单 + 主动作（超期时一键催办）”。
+- `ResearcherArrivalList.vue`：
+  - 新增 `FlowDetailDialog` 流转单入口；
+  - 操作区统一为“流转单 + 确认入库（待入库时）”，非待入库状态显示“仅查看”；
+  - 批次/条码行内信息去重，减少重复展示。
+
+### ✅ 库存台账（ReagentUnifiedInventory）表格骨架统一
+
+- 全库视图由原生 `table` 切换为 `LedgerTable`，与其他台账保持统一容器与间距。
+- 搜索输入改为统一 `Input` 组件，柜型筛选去除 Emoji 干扰文案。
+- 团队视图与全库视图动作列统一为“流转单 + 1个主动作”：
+  - 管控试剂：`流转单 + 使用`
+  - 普通试剂：`流转单 + 用尽`
+  - 非在库状态：`仅查看`
+
+## [2026-02-28] - 台账边界落地（申购/领用）
+
+### ✅ 申购台账（ReagentRequestList）信息瘦身
+
+- 移除表格内展开式“AI 建议面板”，避免台账行承载流程解释与长文案。
+- 台账回归标准列：主数据 + 状态 + 操作。
+- 行内状态提示保留短文案口径：`已接单（到货台账跟进）`。
+
+### ✅ 领用台账（ReagentDispensePanel）结构收敛
+
+- 台账行内操作统一为“流转单 + 1个主动作”：
+  - 团队长：显示 `审批`
+  - 双签持有人：显示 `确认`
+  - 驳回动作收敛到流转单内处理
+- 研发与非研发视角领用列表统一使用 `LedgerTable` 框架，表头与间距口径一致。
+
+### ✅ 领用流转单字段补齐
+
+- 流转单 `meta` 补充审批人、钥匙A/钥匙B信息（管控试剂）。
+- `notes` 拆分为短句结构，分别展示待审批、双签状态、截止时间、驳回原因与完成归档信息。
+
+## [2026-02-28] - 台账/流转单信息边界规范化（第三轮）
+
+### ✅ 规范文档补齐（SSOT）
+
+- `UI_SPEC.md` 新增“台账与流转单信息边界（Content Boundary SSOT）”章节，明确：
+  - 台账只保留最小决策信息（标识/归属/主数值/状态/动作入口）
+  - 流程细节统一进入流转单（节点、处理人、处理时间、驳回原因）
+  - 文案密度限制（行内短文案、禁 Emoji 前缀、禁止长段说明）
+  - 同类台账列策略一致（主数据列 + 状态列 + 操作列）
+- `FLOW_DESIGN_SPEC.md` 新增“信息边界与内容层级”章节，补充流程 UI 维度规则：
+  - 台账与流转单职责拆分
+  - 节点时间/审批人显示口径（有值才显示）
+  - 申购/到货/领用三类流转单最小字段清单（MVP）
+
+### ✅ 页面文案与结构收敛
+
+- `ReagentRequestList.vue`：
+  - 将长提示文案收敛为短提示：`已接单（到货台账跟进）`
+  - 去除行内冗长流程说明，避免台账承担“流程解释器”职责。
+- `ReagentDispensePanel.vue`：
+  - 移除常驻“流程轨迹”列，改为通过“流转单”查看流程详情。
+  - 流程台账列口径与其他台账保持一致，减少跨页面学习成本。
+
+## [2026-02-28] - 到货状态展示收敛与术语清理（第二轮）
+
+### ✅ 术语去业务噪音（前台统一）
+
+- 采购与研发相关页面已移除用户可见“点收/点验/批次确认”术语，统一替换为“到货确认”语义。
+- `ProcurementReceiving.vue`：
+  - 行内动作由“确认”改为“确认到货”；
+  - 列头改为“到货操作”；
+  - 流转单节点文案统一为“到货确认 -> 赋码暂存 -> 研发扫码入库”；
+  - 状态展示统一为“待到货/已到货”。
+- `ProcurementBatchImport.vue`、`ReagentOpsDashboard.vue` 同步清理“点验/批次确认”提示文案。
+
+### ✅ 状态展示 SSOT 落地（前端统一映射）
+
+- 新增统一状态词典文件：`frontend/src/lib/reagent-status.ts`
+  - `getProcurementReceiveDisplayStatus`
+  - `getProcurementReceiveStatusVariant`
+  - `getInventoryDisplayStatus`
+  - `getInventoryStatusVariant`
+  - `isArrivedStatus / isInStorageStatus / isUsedStatus`
+- 统一口径：
+  - 采购接收侧：`待收货/部分收货/已收货` -> `待到货/待到货/已到货`
+  - 库存实体侧：`Arrived|已到货` -> `已到货`，`InStorage|在库` -> `已入库`，`Used|已耗尽` -> `已耗尽`
+
+### ✅ 页面接入范围（已完成）
+
+- `ProcurementReceiving.vue`：接入采购到货状态映射与 Badge 语义。
+- `ResearcherArrivalList.vue`：筛选项改为“全部/已到货/已入库”，并统一状态判断逻辑。
+- `ReagentUnifiedInventory.vue`：状态筛选与标签统一改为“已入库/已到货/已耗尽”口径。
+- `ReagentInventoryList.vue`：状态标签与颜色映射统一，移除局部重复词典。
+- `ItemLifecycleDialog.vue`：状态标签与动作分支改为统一状态判断方法。
+- `ReagentScanner.vue`：扫码页状态展示统一；后端提交值保持内部状态不变。
+
+### ✅ 文档同步（规范层）
+
+- `UI_SPEC.md` 升级为 `v1.1`，新增“试剂状态词典（Status SSOT）”章节。
+- 明确约束：前端展示统一词典，页面禁止重复定义状态文案与颜色映射。
+
+### ✅ 回归验证
+
+- 前端：`npm run build` 通过（2026-02-28）。
+
+## [2026-02-28] - 申购与到货入库链路解耦（第一轮）
+
+### ✅ 后端解耦与接口调整
+
+- `GetReagentItems` 取消对 `request_id/requestor_id` 的申购外键过滤依赖，统一按物资实体状态与试剂柜归属查询。
+- `GetReagentItemByUUID` 去除 `ReagentRequest` 预加载，生命周期接口改为以“瓶资产本身”为中心返回数据。
+- `ReceiveBatchItem` 不再将 `matched_request_id` 写入 `ReagentItem.reagent_request_id`，到货赋码与申购流程彻底分离。
+- `CheckInReagentItem` 鉴权从“申购人 owner”改为角色动作权限（`researcher/leader` 可执行），避免因未关联申购导致入库失败。
+- `GetTeamInventory` 改为按 `reagent_cabinets.department_id` 分组，并通过 `departments` 回填团队名称，不再依赖申购单所属人。
+- `GetReagentDashboardStats` 中研发视角统计改为“本人操作 + 本团队柜位库存”逻辑，去掉对 `reagent_requests` 的 JOIN 依赖。
+- `SeedCabinets` 分柜策略改为按柜型轮询分配（普通柜/管控柜），不再读取申购来源部门。
+- `ReagentItem` 模型移除 `ReagentRequestID/ReagentRequest` 字段，接口层不再暴露“瓶资产 -> 申购单”关联结构。
+- `SeedReagents/SeedTeamInventory` 的测试数据生成逻辑同步清理外键写入，防止重置数据后回流旧关联。
+- `ProcurementBatchItem` 模型移除 `MatchedRequestID`，新增 `RequestSuggestion`（纯文本建议），导入匹配不再保留申购单结构外键。
+- `CreateProcurementBatch` 自动匹配改为“品目 + 建议文本 + 指派用户”，`UpdateProcurementBatchItem` 改为仅接收 `matched_user_id/matched_catalog_id/request_suggestion`。
+- 采购看板“导入待匹配”统计 SQL 去除 `matched_request_id` 条件，改为仅判断 `matched_catalog_id/matched_user_id`。
+- 自动匹配收口规则：若仅匹配到品目但未能定位可执行人员，则保持 `未匹配`（不标记“自动匹配”），避免出现“伪完成可确认”状态。
+- 新增 `CleanupLegacySchema`（SQLite 重建表迁移）并在服务启动时自动执行，物理删除旧字段：
+  - `reagent_items.reagent_request_id`
+  - `procurement_batch_items.matched_request_id`
+- 新增一次性命令：
+  - `backend/cmd/migrate_reagent_schema/main.go`：执行 AutoMigrate + 旧字段物理清理
+  - `backend/cmd/seed_procurement_import/main.go`：重建采购导入演示数据（2批次、6条明细，覆盖自动匹配/手动匹配/未匹配/忽略/部分收货）
+
+### ✅ 前端展示语义收敛
+
+- `RequestProgressDialog` 由“申购+到货混合流转”改为仅展示申购 BPM-A，明确提示“到货/入库在独立台账跟踪”。
+- `ReagentRequestList` 移除基于 `reagent_request_id` 的“实物到货提示”联动，避免制造强绑定预期。
+- `ResearcherArrivalList`、`ProcurementReceiving` 去除“来源申购单/申请人”展示，统一改为“批次号 + 条码”语义。
+- `ReagentUnifiedInventory`、`ReagentInventoryList` 库存表头从“申购人”改为“批次来源”，并清理 `reagent_request` 前端类型依赖。
+- `ItemLifecycleDialog` 移除“原始申购记录溯源”信息块，生命周期弹窗回归“单瓶实物流转”视角。
+- `ProcurementBatchImport` 的“最佳推荐”改为“建议需求（仅文本）”，选择后写入 `request_suggestion` 并指派用户，不再提交 `matched_request_id`。
+
+### ✅ 回归验证
+
+- 后端：`GOCACHE=/tmp/go-build-cache go test ./...` 通过。
+- 前端：`npm run build` 通过。
+
 ## [2026-02-27] - 全局视角架构收敛（首页承接运营概览）
 
 ### ✅ 全局角色上下文已完成
