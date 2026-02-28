@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +11,33 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+var allowedUserRoles = map[string]struct{}{
+	"admin":                  {},
+	"director":               {},
+	"team_leader":            {},
+	"member":                 {},
+	"researcher":             {},
+	"procurement":            {},
+	"procurement_specialist": {},
+	"measurement_specialist": {},
+	"safety_specialist":      {},
+}
+
+func normalizeUserRole(role string) string {
+	return strings.TrimSpace(strings.ToLower(role))
+}
+
+func validateUserRole(role string) error {
+	normalized := normalizeUserRole(role)
+	if normalized == "" {
+		return fmt.Errorf("role is required")
+	}
+	if _, ok := allowedUserRoles[normalized]; !ok {
+		return fmt.Errorf("invalid role: %s", role)
+	}
+	return nil
+}
 
 // GetDepartments returns the hierarchical organization tree
 func GetDepartments(c *gin.Context) {
@@ -136,12 +164,16 @@ func CreateUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "同一用户不能同时担任A/B双签持有人"})
 		return
 	}
+	if err := validateUserRole(input.Role); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
 	user := models.User{
 		Username:             input.Username,
 		RealName:             input.RealName,
 		DepartmentID:         input.DepartmentID,
-		Role:                 input.Role,
+		Role:                 normalizeUserRole(input.Role),
 		IsDispenseKeyHolderA: input.IsDispenseKeyHolderA,
 		IsDispenseKeyHolderB: input.IsDispenseKeyHolderB,
 	}
@@ -202,7 +234,11 @@ func UpdateUser(c *gin.Context) {
 		updates["department_id"] = *input.DepartmentID
 	}
 	if input.Role != nil {
-		updates["role"] = *input.Role
+		if err := validateUserRole(*input.Role); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		updates["role"] = normalizeUserRole(*input.Role)
 	}
 	if input.IsDispenseKeyHolderA != nil {
 		updates["is_dispense_key_holder_a"] = *input.IsDispenseKeyHolderA
