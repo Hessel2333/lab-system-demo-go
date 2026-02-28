@@ -217,14 +217,18 @@ func GetReagentDashboardStats(c *gin.Context) {
 	`).Scan(&stocks)
 	lowStockAlerts = int64(len(stocks))
 
+	var currentUser models.User
+	var userDeptID uint
+	if err := database.DB.Select("id", "department_id").First(&currentUser, userID).Error; err == nil {
+		userDeptID = currentUser.DepartmentID
+	}
+
 	// Get Recent Activity Logs (last 5)
 	var recentLogs []models.ReagentLog
 	recentLogsQuery := database.DB.Preload("User").Preload("ReagentItem.ReagentCatalog")
 	if role == "researcher" {
 		recentLogsQuery = recentLogsQuery.
-			Joins("JOIN reagent_items ri ON ri.uuid = reagent_logs.reagent_item_id").
-			Joins("JOIN reagent_requests rr ON rr.id = ri.reagent_request_id").
-			Where("rr.requestor_id = ?", userID)
+			Where("reagent_logs.user_id = ?", userID)
 	}
 	recentLogsQuery.Order("reagent_logs.created_at desc").Limit(5).Find(&recentLogs)
 
@@ -272,29 +276,39 @@ func GetReagentDashboardStats(c *gin.Context) {
 		database.DB.Model(&models.ReagentRequest{}).
 			Where("requestor_id = ? AND status IN ?", userID, []string{"待审批", "待采购", "已接单"}).
 			Count(&myOpenRequests)
-		database.DB.Model(&models.ReagentItem{}).
-			Joins("JOIN reagent_requests rr ON rr.id = reagent_items.reagent_request_id").
-			Where("rr.requestor_id = ? AND reagent_items.status = ?", userID, "已到货").
-			Count(&myPendingCheckIn)
-		database.DB.Model(&models.ReagentItem{}).
-			Joins("JOIN reagent_requests rr ON rr.id = reagent_items.reagent_request_id").
-			Where("rr.requestor_id = ? AND reagent_items.status = ?", userID, "在库").
-			Count(&myInStorageItems)
+		myPendingCheckIn = pendingCheckInItems
+
+		inStorageQuery := database.DB.Model(&models.ReagentItem{}).
+			Joins("LEFT JOIN reagent_cabinets rcab ON rcab.id = reagent_items.cabinet_id").
+			Where("reagent_items.status = ?", "在库")
+		if userDeptID > 0 {
+			inStorageQuery = inStorageQuery.Where("(rcab.department_id = ? OR rcab.department_id = 0)", userDeptID)
+		}
+		inStorageQuery.Count(&myInStorageItems)
+
 		database.DB.Model(&models.ReagentDispenseRequest{}).
 			Where("requester_id = ? AND status IN ?", userID, []string{"待审批", "待双签"}).
 			Count(&myPendingDispense)
 		database.DB.Model(&models.ReagentDispenseRequest{}).
 			Where("requester_id = ? AND status = ? AND updated_at >= date('now', '-7 days')", userID, "已驳回").
 			Count(&myRejectedDispense7d)
-		database.DB.Model(&models.ReagentItem{}).
-			Joins("JOIN reagent_requests rr ON rr.id = reagent_items.reagent_request_id").
+
+		controlledQuery := database.DB.Model(&models.ReagentItem{}).
+			Joins("LEFT JOIN reagent_cabinets rcab ON rcab.id = reagent_items.cabinet_id").
 			Joins("JOIN reagent_catalogs rc ON rc.id = reagent_items.reagent_catalog_id").
-			Where("rr.requestor_id = ? AND reagent_items.status = ? AND rc.is_controlled = ?", userID, "在库", true).
-			Count(&myControlledInStorage)
-		database.DB.Model(&models.ReagentItem{}).
-			Joins("JOIN reagent_requests rr ON rr.id = reagent_items.reagent_request_id").
-			Where("rr.requestor_id = ? AND reagent_items.status = ? AND reagent_items.expiry_date >= date('now') AND reagent_items.expiry_date <= date('now', '+30 day')", userID, "在库").
-			Count(&myNearExpiry30d)
+			Where("reagent_items.status = ? AND rc.is_controlled = ?", "在库", true)
+		if userDeptID > 0 {
+			controlledQuery = controlledQuery.Where("(rcab.department_id = ? OR rcab.department_id = 0)", userDeptID)
+		}
+		controlledQuery.Count(&myControlledInStorage)
+
+		nearExpiryQuery := database.DB.Model(&models.ReagentItem{}).
+			Joins("LEFT JOIN reagent_cabinets rcab ON rcab.id = reagent_items.cabinet_id").
+			Where("reagent_items.status = ? AND reagent_items.expiry_date >= date('now') AND reagent_items.expiry_date <= date('now', '+30 day')", "在库")
+		if userDeptID > 0 {
+			nearExpiryQuery = nearExpiryQuery.Where("(rcab.department_id = ? OR rcab.department_id = 0)", userDeptID)
+		}
+		nearExpiryQuery.Count(&myNearExpiry30d)
 
 		roleFocus = gin.H{
 			"my_open_requests":         myOpenRequests,
@@ -320,7 +334,7 @@ func GetReagentDashboardStats(c *gin.Context) {
 			Count(&receivingTodoLines)
 		database.DB.Model(&models.ProcurementBatchItem{}).
 			Joins("JOIN procurement_batches pb ON pb.id = procurement_batch_items.batch_id").
-			Where("pb.status = ? AND (procurement_batch_items.matched_catalog_id IS NULL OR (procurement_batch_items.matched_request_id IS NULL AND procurement_batch_items.matched_user_id IS NULL))", "待确认").
+			Where("pb.status = ? AND (procurement_batch_items.matched_catalog_id IS NULL OR procurement_batch_items.matched_user_id IS NULL)", "待确认").
 			Count(&unmatchedImportLines)
 		database.DB.Model(&models.ReagentDispenseRequest{}).
 			Where("status = ? AND ((key_holder_a_id = ? AND key_holder_a_confirmed_at IS NULL) OR (key_holder_b_id = ? AND key_holder_b_confirmed_at IS NULL))", "待双签", userID, userID).
@@ -655,16 +669,11 @@ func GetTeamInventory(c *gin.Context) {
 	tx := database.DB.
 		Preload("ReagentCatalog").
 		Preload("Cabinet").
-		Preload("ReagentRequest").
-		Preload("ReagentRequest.Requestor").
-		Preload("ReagentRequest.Requestor.Department").
 		Where("reagent_items.status = ?", "在库")
 
 	if departmentID != "" {
-		// JOIN 到 user 表过滤团队
-		tx = tx.Joins("JOIN reagent_requests rr ON rr.id = reagent_items.reagent_request_id").
-			Joins("JOIN users u ON u.id = rr.requestor_id").
-			Where("u.department_id = ?", departmentID)
+		tx = tx.Joins("JOIN reagent_cabinets rc ON rc.id = reagent_items.cabinet_id").
+			Where("rc.department_id = ?", departmentID)
 	}
 
 	if err := tx.Find(&items).Error; err != nil {
@@ -681,13 +690,37 @@ func GetTeamInventory(c *gin.Context) {
 	}
 
 	groupMap := make(map[uint]*TeamGroup)
+	departmentNameMap := make(map[uint]string)
+	departmentIDs := make([]uint, 0)
+	departmentSeen := make(map[uint]bool)
+	for _, item := range items {
+		if item.Cabinet.ID == 0 || item.Cabinet.DepartmentID == 0 || departmentSeen[item.Cabinet.DepartmentID] {
+			continue
+		}
+		departmentSeen[item.Cabinet.DepartmentID] = true
+		departmentIDs = append(departmentIDs, item.Cabinet.DepartmentID)
+	}
+	if len(departmentIDs) > 0 {
+		var departments []models.Department
+		database.DB.Where("id IN ?", departmentIDs).Find(&departments)
+		for _, d := range departments {
+			departmentNameMap[d.ID] = d.Name
+		}
+	}
+
 	for _, item := range items {
 		var deptID uint = 0
 		var deptName string = "公共库 / 未分配所属团队"
 
-		if item.ReagentRequest.ID != 0 && item.ReagentRequest.Requestor.ID != 0 && item.ReagentRequest.Requestor.Department.ID != 0 {
-			deptID = item.ReagentRequest.Requestor.DepartmentID
-			deptName = item.ReagentRequest.Requestor.Department.Name
+		if item.Cabinet.ID != 0 {
+			deptID = item.Cabinet.DepartmentID
+			if deptID == 0 {
+				deptName = "公共库 / 暂存区"
+			} else if name, ok := departmentNameMap[deptID]; ok && strings.TrimSpace(name) != "" {
+				deptName = name
+			} else {
+				deptName = fmt.Sprintf("团队 #%d", deptID)
+			}
 		}
 
 		if _, ok := groupMap[deptID]; !ok {
@@ -712,21 +745,15 @@ func GetTeamInventory(c *gin.Context) {
 
 func GetReagentItems(c *gin.Context) {
 	var items []models.ReagentItem
-	tx := database.DB.Preload("ReagentCatalog").Preload("Cabinet").Preload("ReagentRequest").Preload("ReagentRequest.Requestor")
-
-	// 如果需要按申购人过滤，利用 GORM 关联进行 Join
-	requestorID := c.Query("requestor_id")
-	if requestorID != "" {
-		tx = tx.Joins("JOIN reagent_requests rr ON rr.id = reagent_items.reagent_request_id").
-			Where("rr.requestor_id = ?", requestorID)
-	}
+	tx := database.DB.Preload("ReagentCatalog").Preload("Cabinet")
 
 	// Optional Query Params
 	if status := c.Query("status"); status != "" {
 		tx = tx.Where("reagent_items.status = ?", status)
 	}
-	if requestID := c.Query("request_id"); requestID != "" {
-		tx = tx.Where("reagent_items.reagent_request_id = ?", requestID)
+	if departmentID := c.Query("department_id"); departmentID != "" {
+		tx = tx.Joins("LEFT JOIN reagent_cabinets rc ON rc.id = reagent_items.cabinet_id").
+			Where("rc.department_id = ?", departmentID)
 	}
 	if err := tx.Order("reagent_items.created_at DESC").Find(&items).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -741,8 +768,6 @@ func GetReagentItemByUUID(c *gin.Context) {
 	tx := database.DB.
 		Preload("ReagentCatalog").
 		Preload("Cabinet").
-		Preload("ReagentRequest").
-		Preload("ReagentRequest.Requestor").
 		Preload("Logs", func(db *gorm.DB) *gorm.DB {
 			return db.Order("reagent_logs.created_at DESC")
 		}).
@@ -844,7 +869,7 @@ func UpdateReagentItemStatus(c *gin.Context) {
 
 	// 注意：此处不回写申购单状态。
 	// ReagentRequest（BPM-A）的终态是「已接单」，由采购员确认时设置。
-	// ReagentItem 的物理状态属于 BPM-B，两个流程通过外键关联，状态机独立。
+	// ReagentItem 的物理状态属于 BPM-B，两个流程独立演进。
 
 	c.JSON(http.StatusOK, item)
 }
@@ -863,7 +888,7 @@ func CheckInReagentItem(c *gin.Context) {
 	}
 
 	var item models.ReagentItem
-	if err := database.DB.Preload("ReagentCatalog").Preload("ReagentRequest").Where("uuid = ?", uuid).First(&item).Error; err != nil {
+	if err := database.DB.Preload("ReagentCatalog").Where("uuid = ?", uuid).First(&item).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
 		return
 	}
@@ -871,8 +896,7 @@ func CheckInReagentItem(c *gin.Context) {
 	if _, ok := authorizeAction(c, authz.PermissionRequest{
 		Resource: authz.ResourceReagentItem,
 		Action:   authz.ActionCheckIn,
-		Scope:    authz.ScopeSelf,
-		OwnerID:  item.ReagentRequest.RequestorID,
+		Scope:    authz.ScopeGlobal,
 	}, 1); !ok {
 		return
 	}
@@ -995,6 +1019,18 @@ func ConsumeReagentItem(c *gin.Context) {
 	if err := tx.Where("uuid = ?", uuid).First(&item).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
+		return
+	}
+
+	var catalog models.ReagentCatalog
+	if err := tx.Select("id", "is_controlled").First(&catalog, item.ReagentCatalogID).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Reagent catalog not found"})
+		return
+	}
+	if !catalog.IsControlled {
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "普通试剂不支持逐次消耗登记，请直接执行耗尽核销"})
 		return
 	}
 
@@ -1286,6 +1322,29 @@ func CreateProcurementBatch(c *gin.Context) {
 
 	// 自动匹配逻辑：尝试用 CAS 号或名称模糊匹配品目字典
 	createdCount := 0
+	attachRequestSuggestion := func(catalogID uint, catalogName string, item *models.ProcurementBatchItem) bool {
+		var request models.ReagentRequest
+		err := database.DB.
+			Preload("Requestor").
+			Where("reagent_catalog_id = ? AND status IN ?", catalogID, []string{"待采购", "已接单"}).
+			Order("reagent_requests.created_at DESC").
+			First(&request).Error
+		if err != nil {
+			return false
+		}
+		if request.RequestorID > 0 {
+			item.MatchedUserID = &request.RequestorID
+		}
+		if item.MatchedUserID == nil {
+			return false
+		}
+		requestorName := strings.TrimSpace(request.Requestor.RealName)
+		if requestorName == "" {
+			requestorName = fmt.Sprintf("用户#%d", request.RequestorID)
+		}
+		item.RequestSuggestion = fmt.Sprintf("建议单 #%d · %s · %s ×%d瓶", request.ID, requestorName, catalogName, request.Quantity)
+		return true
+	}
 	for i := range newItems {
 		item := &newItems[i]
 		item.BatchID = batch.ID
@@ -1300,13 +1359,8 @@ func CreateProcurementBatch(c *gin.Context) {
 				var catalog models.ReagentCatalog
 				if err := database.DB.Where("cas_number = ?", item.CASNumber).First(&catalog).Error; err == nil {
 					item.MatchedCatalogID = &catalog.ID
-					item.MatchStatus = "自动匹配"
-
-					// 进一步尝试匹配到最近的待采购 / 已接单的申购单
-					var request models.ReagentRequest
-					if err := database.DB.Where("reagent_catalog_id = ? AND status IN ?", catalog.ID, []string{"待采购", "已接单"}).
-						Order("reagent_requests.created_at DESC").First(&request).Error; err == nil {
-						item.MatchedRequestID = &request.ID
+					if attachRequestSuggestion(catalog.ID, catalog.Name, item) {
+						item.MatchStatus = "自动匹配"
 					}
 				}
 			}
@@ -1318,13 +1372,8 @@ func CreateProcurementBatch(c *gin.Context) {
 					"%"+item.ReagentName+"%", "%"+item.ReagentName+"%").
 					First(&catalog).Error; err == nil {
 					item.MatchedCatalogID = &catalog.ID
-					item.MatchStatus = "自动匹配"
-
-					// 模糊匹配成功的，也尝试找一下申购单
-					var request models.ReagentRequest
-					if err := database.DB.Where("reagent_catalog_id = ? AND status IN ?", catalog.ID, []string{"待采购", "已接单"}).
-						Order("reagent_requests.created_at DESC").First(&request).Error; err == nil {
-						item.MatchedRequestID = &request.ID
+					if attachRequestSuggestion(catalog.ID, catalog.Name, item) {
+						item.MatchStatus = "自动匹配"
 					}
 				}
 			}
@@ -1375,11 +1424,11 @@ func UpdateProcurementBatchItem(c *gin.Context) {
 	}
 
 	var body struct {
-		MatchedCatalogID *uint  `json:"matched_catalog_id"`
-		MatchedRequestID *uint  `json:"matched_request_id"`
-		MatchedUserID    *uint  `json:"matched_user_id"`
-		CASNumber        string `json:"cas_number"`
-		MatchStatus      string `json:"match_status"`
+		MatchedCatalogID  *uint  `json:"matched_catalog_id"`
+		MatchedUserID     *uint  `json:"matched_user_id"`
+		RequestSuggestion string `json:"request_suggestion"`
+		CASNumber         string `json:"cas_number"`
+		MatchStatus       string `json:"match_status"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1389,20 +1438,12 @@ func UpdateProcurementBatchItem(c *gin.Context) {
 	if body.MatchStatus == "已忽略" {
 		item.MatchStatus = "已忽略"
 		item.MatchedCatalogID = nil
-		item.MatchedRequestID = nil
 		item.MatchedUserID = nil
+		item.RequestSuggestion = ""
 	} else {
-		item.MatchedRequestID = body.MatchedRequestID
 		item.MatchedCatalogID = body.MatchedCatalogID
 		item.MatchedUserID = body.MatchedUserID
-
-		// 若提供了申购单但没提供品目，自动回填品目
-		if item.MatchedRequestID != nil && item.MatchedCatalogID == nil {
-			var req models.ReagentRequest
-			if err := database.DB.First(&req, *item.MatchedRequestID).Error; err == nil {
-				item.MatchedCatalogID = &req.ReagentCatalogID
-			}
-		}
+		item.RequestSuggestion = strings.TrimSpace(body.RequestSuggestion)
 
 		if body.CASNumber != "" {
 			item.CASNumber = body.CASNumber
@@ -1466,10 +1507,10 @@ func ConfirmProcurementBatch(c *gin.Context) {
 }
 
 // ==========================================
-// BPM-B Phase 3: 到货清点与赋码 (三段式解耦设计)
+// BPM-B Phase 3: 到货确认与赋码 (三段式解耦设计)
 // ==========================================
 
-// GetPendingReceives 获取所有已确认下单，但还未完全点货物理签收的批次明细
+// GetPendingReceives 获取所有已确认下单，但还未完成到货确认的批次明细
 func GetPendingReceives(c *gin.Context) {
 	var items []models.ProcurementBatchItem
 	// 查找归属于"已确认"大状态批次中的明细，且明细本身的收货状态不是"已收货"，且必须关联了 catalog
@@ -1486,7 +1527,7 @@ func GetPendingReceives(c *gin.Context) {
 	c.JSON(http.StatusOK, items)
 }
 
-// ReceiveBatchItem 采购人员在“收货工作台”对着单一点货，触发物理资产生成与原始单据闭环
+// ReceiveBatchItem 采购人员在“到货台账”整行确认到货，触发物理资产生成与原始单据闭环
 func ReceiveBatchItem(c *gin.Context) {
 	if _, ok := authorizeAction(c, authz.PermissionRequest{
 		Resource: authz.ResourceProcurementBatch,
@@ -1497,13 +1538,10 @@ func ReceiveBatchItem(c *gin.Context) {
 	}
 
 	itemID := c.Param("itemId")
-	var input struct {
-		Quantity int `json:"quantity"` // 实收点验瓶数
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload"})
-		return
-	}
+	// 兼容前端历史 payload，但到货逻辑已收敛为“整行确认”，不再接受分批数量输入
+	_ = c.ShouldBindJSON(&struct {
+		Quantity int `json:"quantity"`
+	}{})
 
 	var item models.ProcurementBatchItem
 	if err := database.DB.Preload("Batch").First(&item, itemID).Error; err != nil {
@@ -1522,41 +1560,29 @@ func ReceiveBatchItem(c *gin.Context) {
 	}
 
 	remaining := item.Quantity - item.ReceivedQuantity
-	if input.Quantity > remaining || input.Quantity <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid receive quantity"})
+	if remaining <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No remaining quantity to receive"})
 		return
 	}
 
-	// BPM-A/B 完全解耦：不再创建中间申购单，也不修改原始申购单状态
-	// 仅做软关联：如果有匹配的申购单，就把 ReagentRequestID 写入到瓶资产上，方便复盘查询
-	var reqID uint
-	if item.MatchedRequestID != nil {
-		reqID = *item.MatchedRequestID
-	}
+	// BPM-A/B 完全解耦：不再把申购单外键写入瓶资产
 
 	createdItemsCount := 0
-	createdUUIDs := make([]string, 0, input.Quantity)
-	for q := 0; q < input.Quantity; q++ {
+	createdUUIDs := make([]string, 0, remaining)
+	for q := 0; q < remaining; q++ {
 		reagentItem := models.ReagentItem{
 			ReagentCatalogID: *item.MatchedCatalogID,
 			Status:           "已到货", // 呆在暂存区
 			Location:         ReagentStagingArea,
-		}
-		if reqID > 0 {
-			reagentItem.ReagentRequestID = reqID
 		}
 		database.DB.Create(&reagentItem)
 		createdItemsCount++
 		createdUUIDs = append(createdUUIDs, reagentItem.UUID)
 	}
 
-	item.ReceivedQuantity += input.Quantity
-	if item.ReceivedQuantity >= item.Quantity {
-		item.ReceiveStatus = "已收货"
-		// BPM-A/B 解耦：不再修改申购单状态，申购单由 BPM-A 自行流转
-	} else {
-		item.ReceiveStatus = "部分收货"
-	}
+	item.ReceivedQuantity = item.Quantity
+	item.ReceiveStatus = "已收货"
+	// BPM-A/B 解耦：不再修改申购单状态，申购单由 BPM-A 自行流转
 
 	database.DB.Save(&item)
 

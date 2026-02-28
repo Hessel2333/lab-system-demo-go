@@ -5,6 +5,7 @@ import Input from '@/components/ui/Input.vue'
 import Card from '@/components/ui/Card.vue'
 import axios from 'axios'
 import { formatAmount, formatNumber, normalizeUnit } from '@/lib/quantity'
+import { getInventoryDisplayStatus } from '@/lib/reagent-status'
 
 const items = ref<any[]>([])
 const isLoading = ref(true)
@@ -13,7 +14,7 @@ const statusFilter = ref('全部')
 const currentPage = ref(1)
 const pageSize = 15
 
-const statusOptions = ['全部', '在库', '已到货', '已耗尽']
+const statusOptions = ['全部', '已入库', '已到货', '已耗尽']
 
 const fetchItems = async () => {
     isLoading.value = true
@@ -63,20 +64,16 @@ const setStatusFilter = (s: string) => {
 }
 
 const getStatusLabel = (status: string) => {
-    const map: Record<string, string> = {
-        'InStorage': '在库',
-        'Arrived': '已到货',
-        'Used': '已耗尽',
-        'Expired': '已过期',
-        'Disposed': '已处理'
-    }
-    return map[status] || status;
+    const display = getInventoryDisplayStatus(status)
+    if (display !== status) return display
+    const map: Record<string, string> = { 'Expired': '已过期', 'Disposed': '已处理' }
+    return map[status] || status
 }
 
 const getStatusColor = (status: string) => {
     const label = getStatusLabel(status)
     const map: Record<string, string> = {
-        '在库': 'bg-green-100 text-green-800',
+        '已入库': 'bg-green-100 text-green-800',
         '已到货': 'bg-blue-100 text-blue-800',
         '已耗尽': 'bg-gray-100 text-gray-500',
         '已过期': 'bg-red-100 text-red-800',
@@ -154,7 +151,7 @@ onMounted(() => {
               <th scope="col" class="px-6 py-3">试剂名称</th>
               <th scope="col" class="px-6 py-3">系统条形码</th>
               <th scope="col" class="px-6 py-3">剩余量</th>
-              <th scope="col" class="px-6 py-3">申购人</th>
+              <th scope="col" class="px-6 py-3">批次来源</th>
               <th scope="col" class="px-6 py-3">状态</th>
               <th scope="col" class="px-6 py-3">存放位置</th>
               <th scope="col" class="px-6 py-3">有效期</th>
@@ -182,10 +179,7 @@ onMounted(() => {
                   <span v-else class="text-xs text-gray-400">{{ normalizeUnit(item.reagent_catalog?.unit, '--') }}</span>
               </td>
               <td class="px-6 py-4 text-gray-700">
-                  <span v-if="item.reagent_request?.requestor?.real_name" class="inline-flex items-center gap-1">
-                      {{ item.reagent_request.requestor.real_name }}
-                  </span>
-                  <span v-else class="text-gray-400">System</span>
+                  <span>{{ item.batch_number || '系统批次' }}</span>
               </td>
               <td class="px-6 py-4">
                   <span :class="['px-2 py-1 rounded-full text-xs font-medium', getStatusColor(item.status)]">

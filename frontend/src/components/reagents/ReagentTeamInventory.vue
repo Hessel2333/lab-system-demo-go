@@ -108,6 +108,10 @@ const consumeDialog = ref({
 })
 
 const openConsumeDialog = (item: ReagentItem) => {
+  if (!item.reagent_catalog?.is_controlled) {
+    toast.error('普通试剂不支持逐次消耗，请直接执行“用尽”')
+    return
+  }
   consumeDialog.value = {
     isOpen: true,
     item,
@@ -118,6 +122,11 @@ const openConsumeDialog = (item: ReagentItem) => {
 
 const submitConsume = async () => {
   if (!consumeDialog.value.item) return
+  if (!consumeDialog.value.item.reagent_catalog?.is_controlled) {
+    toast.error('普通试剂不支持逐次消耗，请直接执行“用尽”')
+    consumeDialog.value.isOpen = false
+    return
+  }
   if (consumeDialog.value.volume <= 0) {
     toast.error('领用量必须大于0')
     return
@@ -141,10 +150,7 @@ const submitConsume = async () => {
 const markAsEmpty = async (item: ReagentItem) => {
   if (!confirm(`确认将该瓶 [${item.reagent_catalog?.name}] 标记为已耗尽并核销吗？`)) return
   try {
-    await axios.put(`/api/reagents/items/${item.uuid}/status`, {
-      status: '已耗尽',
-      location: item.location
-    })
+    await axios.post(`/api/reagents/items/${item.uuid}/deplete`, { remarks: '团队台账执行耗尽核销' })
     toast.success('空瓶已核销回收')
     fetchInventory()
   } catch (error: any) {
@@ -286,8 +292,8 @@ const formatDate = (d: string) => {
                 </span>
 
                 <!-- 快捷操作区 (仅自己团队或授权时可用) -->
-                <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity ml-auto pl-4 border-l border-gray-100 shrink-0">
-                  <button @click.stop="openConsumeDialog(item)" class="text-[11px] px-2 py-1 bg-blue-50 text-blue-600 rounded flex items-center gap-1 hover:bg-blue-100 transition-colors">
+                <div class="flex items-center gap-2 ml-auto pl-4 border-l border-gray-100 shrink-0">
+                  <button v-if="item.reagent_catalog?.is_controlled" @click.stop="openConsumeDialog(item)" class="text-[11px] px-2 py-1 bg-blue-50 text-blue-600 rounded flex items-center gap-1 hover:bg-blue-100 transition-colors">
                     <MinusCircle class="w-3 h-3" /> 使用
                   </button>
                   <button @click.stop="markAsEmpty(item)" class="text-[11px] px-2 py-1 bg-gray-50 text-gray-400 rounded flex items-center gap-1 hover:bg-red-50 hover:text-red-500 transition-colors">

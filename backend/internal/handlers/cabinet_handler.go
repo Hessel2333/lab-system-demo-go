@@ -155,8 +155,8 @@ func SeedCabinets(c *gin.Context) {
 	}
 
 	// 创建柜子
-	cabinetMap := map[string]*models.ReagentCabinet{} // deptID_type → cabinet（普通柜按团队）
-	var controlledCabinets []*models.ReagentCabinet   // 管控柜列表（轮流分配）
+	var ordinaryCabinets []*models.ReagentCabinet   // 普通柜列表（轮流分配）
+	var controlledCabinets []*models.ReagentCabinet // 管控柜列表（轮流分配）
 	for _, s := range seeds {
 		cab := models.ReagentCabinet{
 			Name:         s.Name,
@@ -170,8 +170,7 @@ func SeedCabinets(c *gin.Context) {
 			return
 		}
 		if s.CabinetType == "普通试剂柜" {
-			key := fmt.Sprintf("%d_普通试剂柜", s.DepartmentID)
-			cabinetMap[key] = &cab
+			ordinaryCabinets = append(ordinaryCabinets, &cab)
 		} else {
 			controlledCabinets = append(controlledCabinets, &cab)
 		}
@@ -180,11 +179,10 @@ func SeedCabinets(c *gin.Context) {
 	// 批量为现有 ReagentItem 分配柜子
 	var items []models.ReagentItem
 	database.DB.Preload("ReagentCatalog").
-		Preload("ReagentRequest").
-		Preload("ReagentRequest.Requestor").
 		Find(&items)
 
 	updatedCount := 0
+	ordinaryIdx := 0
 	controlledIdx := 0
 	for i := range items {
 		item := &items[i]
@@ -198,11 +196,10 @@ func SeedCabinets(c *gin.Context) {
 				controlledIdx++
 			}
 		} else {
-			// 普通品按团队分配
-			deptID := item.ReagentRequest.Requestor.DepartmentID
-			key := fmt.Sprintf("%d_普通试剂柜", deptID)
-			if cab, ok := cabinetMap[key]; ok {
-				targetCabinetID = cab.ID
+			// 普通品轮流分配到普通柜，避免依赖申购单归属
+			if len(ordinaryCabinets) > 0 {
+				targetCabinetID = ordinaryCabinets[ordinaryIdx%len(ordinaryCabinets)].ID
+				ordinaryIdx++
 			}
 		}
 

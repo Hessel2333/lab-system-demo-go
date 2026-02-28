@@ -277,18 +277,41 @@ const refreshBatchItems = async () => {
 // --- Step 2: 手动匹配与忽略 ---
 const updateItemMatch = async (item: any, selectedVal: string) => {
     if (!selectedVal) return
-    const isUser = selectedVal.startsWith('usr_')
+    const isRequestSuggestion = selectedVal.startsWith('req_')
     const id = Number(selectedVal.split('_')[1])
-    const payload = isUser ? { matched_user_id: id, cas_number: item.cas_number } : { matched_request_id: id, cas_number: item.cas_number }
+
+    let payload: any = {
+        cas_number: item.cas_number,
+        matched_catalog_id: item.matched_catalog_id || null,
+        matched_user_id: null,
+        request_suggestion: ''
+    }
+
+    if (isRequestSuggestion) {
+        const req = requests.value.find((r: any) => r.id === id)
+        if (!req) {
+            toast('建议申购单不存在，请刷新后重试', 'error')
+            return
+        }
+        const requestorName = req.requestor?.real_name || `用户#${req.requestor_id}`
+        const reagentName = req.reagent_catalog?.name || '未知试剂'
+        payload.matched_user_id = req.requestor_id || null
+        payload.matched_catalog_id = req.reagent_catalog_id || item.matched_catalog_id || null
+        payload.request_suggestion = `建议单 #${req.id} · ${requestorName} · ${reagentName} ×${req.quantity}瓶`
+    } else {
+        payload.matched_user_id = id
+        payload.request_suggestion = ''
+    }
 
     try {
         await axios.put(`/api/reagents/procurement-batches/${batchId.value}/items/${item.id}`, payload)
-        if (isUser) {
-            item.matched_user_id = id
-            item.matched_request_id = null
+        if (isRequestSuggestion) {
+            item.matched_user_id = payload.matched_user_id
+            item.matched_catalog_id = payload.matched_catalog_id
+            item.request_suggestion = payload.request_suggestion
         } else {
-            item.matched_request_id = id
-            item.matched_user_id = null
+            item.matched_user_id = id
+            item.request_suggestion = ''
         }
         item.match_status = '手动匹配'
         toast('认领并关联成功')
@@ -304,7 +327,8 @@ const ignoreItem = async (item: any) => {
         })
         item.match_status = '已忽略'
         item.matched_catalog_id = null
-        item.matched_request_id = null
+        item.matched_user_id = null
+        item.request_suggestion = ''
     } catch {
         toast('忽略失败', 'error')
     }
@@ -323,7 +347,8 @@ const ignoreAllUnmatched = async () => {
         for (const item of unmatchedItems) {
             item.match_status = '已忽略'
             item.matched_catalog_id = null
-            item.matched_request_id = null
+            item.matched_user_id = null
+            item.request_suggestion = ''
         }
         toast(`已一键将 ${unmatchedItems.length} 项耗材标记为放行忽略`)
     } catch {
@@ -331,11 +356,23 @@ const ignoreAllUnmatched = async () => {
     }
 }
 
+const currentAssigneeValue = (item: any) => {
+    const hint = String(item.request_suggestion || '')
+    const matched = hint.match(/#(\d+)/)
+    if (matched?.[1]) return `req_${matched[1]}`
+    if (item.matched_user_id) return `usr_${item.matched_user_id}`
+    return ''
+}
+
+const isPendingAssignee = (item: any) => {
+    return item.match_status === '未匹配' && !!item.matched_catalog_id && !item.matched_user_id
+}
+
 // --- Step 3: 确认并赋码 ---
 const confirmBatch = async () => {
     if (!batchId.value) return
     if (batchStatus.value !== '待确认') {
-        toast('该批次已确认，可直接到「到货台账」执行点验与入库')
+        toast('该批次已确认，可直接到「到货台账」执行到货确认与入库')
         step.value = 'done'
         return
     }
@@ -546,16 +583,19 @@ const createEmptyBatch = () => {
                     <AlertCircle v-else class="w-3 h-3" />
                     {{ item.match_status }}
                   </span>
+                  <div v-if="isPendingAssignee(item)" class="mt-1 text-[10px] font-semibold text-amber-700">
+                    待指派责任人
+                  </div>
                 </td>
                 <td class="px-3 py-2 min-w-56">
                   <div v-if="item.match_status !== '已忽略'" class="flex flex-col gap-1.5">
                     <select
                       @change="updateItemMatch(item, ($event.target as HTMLSelectElement).value)"
                       class="w-full text-xs border border-gray-300 rounded px-1.5 py-1.5 bg-white focus:ring-1 focus:ring-blue-500"
-                      :value="item.matched_request_id ? `req_${item.matched_request_id}` : (item.matched_user_id ? `usr_${item.matched_user_id}` : '')"
+                      :value="currentAssigneeValue(item)"
                     >
-                      <option value="">分配给申购需求 / 指派个人...</option>
-                      <optgroup label="最佳推荐 (现有申购单)">
+                      <option value="">分配建议需求 / 指派个人...</option>
+                      <optgroup label="建议需求（仅文本，不做外键关联）">
                         <option v-for="req in requests" :key="`req_${req.id}`" :value="`req_${req.id}`">
                           {{ req.requestor?.real_name || '未知' }} - {{ req.reagent_catalog?.name }} (需{{ req.quantity }}瓶)
                         </option>
@@ -571,6 +611,14 @@ const createEmptyBatch = () => {
                       <span v-if="item.matched_catalog_id" class="text-[10px] text-emerald-600 font-medium">系统归属品目 #{{ item.matched_catalog_id }}</span>
                       <span v-else class="text-[10px] text-gray-400">系统尚无分类档案</span>
                       <button v-if="item.match_status === '未匹配'" @click="ignoreItem(item)" class="text-[10px] text-gray-400 hover:text-red-500 transition underline decoration-dashed">标记忽略 (非试剂)</button>
+                    </div>
+                    <div v-if="item.request_suggestion" class="flex flex-wrap gap-1">
+                      <span class="inline-flex items-center rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">
+                        建议
+                      </span>
+                      <span class="min-w-0 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-600">
+                        {{ item.request_suggestion }}
+                      </span>
                     </div>
                   </div>
                   <span v-else class="text-[10px] text-gray-400 border border-gray-200 px-1 py-0.5 rounded bg-gray-100 inline-block">已忽略（不入库）</span>
@@ -608,7 +656,7 @@ const createEmptyBatch = () => {
     <div v-if="step === 'done'" class="text-center py-10 space-y-4">
       <CheckCircle2 class="w-16 h-16 mx-auto text-green-500" />
       <h3 class="text-lg font-semibold text-gray-900">批次导入完成！</h3>
-      <p class="text-sm text-gray-600">试剂已进入暂存区，可在到货台账继续点验、打印与入库。</p>
+      <p class="text-sm text-gray-600">试剂已进入暂存区，可在到货台账继续到货确认、打印与入库。</p>
       <Button size="sm" variant="primary" @click="resetAll">
         导入新批次
       </Button>

@@ -108,7 +108,6 @@ func SeedReagents(c *gin.Context) {
 
 			item := models.ReagentItem{
 				UUID:             uuid.New().String(),
-				ReagentRequestID: historyRequests[i].ID,
 				ReagentCatalogID: historyRequests[i].ReagentCatalogID,
 				Status:           statusObj,
 				Location:         location,
@@ -160,7 +159,7 @@ func SeedReagents(c *gin.Context) {
 		}
 	}
 
-	// 4. Create Procurement Batches and Items (For "待点验" testing)
+	// 4. Create Procurement Batches and Items (For "待到货确认" testing)
 	testBatch := models.ProcurementBatch{
 		OrderNumber: fmt.Sprintf("PO-TEST-%d", rand.Intn(9000)),
 		Status:      "已确认",
@@ -276,7 +275,6 @@ func SeedTeamInventory(c *gin.Context) {
 
 				item := models.ReagentItem{
 					UUID:             uuid.New().String(),
-					ReagentRequestID: req.ID,
 					ReagentCatalogID: cat.ID,
 					Status:           "在库",
 					Location:         entry.location,
@@ -313,19 +311,18 @@ func SeedTeamInventory(c *gin.Context) {
 	}
 
 	// === 添加一些特殊的“已到货(待入库)”测试条目（用于验证待入库跟进列表以及超时警告）===
-	// 制造一条今天刚点验的 (给当前默认登录用户 ID=1 Admin)：
+	// 制造一条今天刚到货确认的数据 (给当前默认登录用户 ID=1 Admin)：
 	reqRecent := models.ReagentRequest{
 		RequestorID:      1, // Admin (Current Frontend User)
 		ReagentCatalogID: 1, // 无水乙醇
 		Quantity:         1,
 		Status:           "已接单",
-		Remarks:          "测试刚点验的数据",
+		Remarks:          "测试刚到货确认的数据",
 		OrderReference:   "YPK-TEST-NEW",
 	}
 	tx.Create(&reqRecent)
 	tx.Create(&models.ReagentItem{
 		UUID:             uuid.New().String(),
-		ReagentRequestID: reqRecent.ID,
 		ReagentCatalogID: reqRecent.ReagentCatalogID,
 		Status:           "已到货",
 		Location:         ReagentStagingArea,
@@ -348,7 +345,6 @@ func SeedTeamInventory(c *gin.Context) {
 	tx.Create(&reqOverdue)
 	tx.Create(&models.ReagentItem{
 		UUID:             uuid.New().String(),
-		ReagentRequestID: reqOverdue.ID,
 		ReagentCatalogID: reqOverdue.ReagentCatalogID,
 		Status:           "已到货",
 		Location:         "采购部实验桌收发台",

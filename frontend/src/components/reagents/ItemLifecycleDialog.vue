@@ -3,14 +3,18 @@ import { computed, ref, watch } from 'vue'
 import axios from 'axios'
 import { toast } from 'vue-sonner'
 import {
-  AlertTriangle, Package, MapPin, 
-  CalendarClock, QrCode, ShoppingCart, TestTube2,
-  ChevronRight, History
+  AlertTriangle,
+  MapPin,
+  CalendarClock,
+  QrCode,
+  TestTube2,
+  History
 } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Dialog from '@/components/ui/Dialog.vue'
-import { formatAmount, formatNumber, normalizeUnit } from '@/lib/quantity'
+import { formatNumber, normalizeUnit } from '@/lib/quantity'
+import { getInventoryDisplayStatus, getInventoryStatusVariant, isArrivedStatus, isInStorageStatus, isUsedStatus } from '@/lib/reagent-status'
 
 const props = defineProps<{
   isOpen: boolean
@@ -25,9 +29,19 @@ const itemData = ref<any>(null)
 const actionProcessing = ref(false)
 const consumeVolume = ref(1)
 const consumeRemarks = ref('')
+const consumeUnit = computed(() => normalizeUnit(itemData.value?.reagent_catalog?.unit, 'ml'))
 
-const consumeUnit = computed(() => {
-  return normalizeUnit(itemData.value?.reagent_catalog?.unit, 'ml')
+const isArrivalStageLog = (log: any) => {
+  const action = String(log?.action || '')
+  const remarks = String(log?.remarks || '')
+  const arrivalKeywords = ['点收', '点验', '到货确认', '收货确认', '批次确认', '二维码打印', '赋码', '已到货', '暂存区']
+  return arrivalKeywords.some((k) => action.includes(k) || remarks.includes(k))
+}
+
+const displayLogs = computed(() => {
+  const logs = Array.isArray(itemData.value?.logs) ? itemData.value.logs : []
+  // 全周期流转单不展示采购到货确认阶段痕迹，只保留入库后的使用周期
+  return logs.filter((log: any) => !isArrivalStageLog(log))
 })
 
 watch(() => props.isOpen, (newVal) => {
@@ -55,16 +69,7 @@ const fetchItemDetails = async () => {
   }
 }
 
-const getStatusVariant = (status: string): any => {
-  const map: Record<string, string> = {
-    '在库': 'success',
-    '已到货': 'info',
-    '待收货': 'warning',
-    '部分收货': 'warning',
-    '已耗尽': 'default',
-  }
-  return map[status] || 'default'
-}
+const getStatusVariant = (status: string): any => getInventoryStatusVariant(status)
 
 const getLogDotColor = (action: string) => {
   const map: Record<string, string> = {
@@ -78,54 +83,47 @@ const getLogDotColor = (action: string) => {
   return map[action] || 'bg-gray-400'
 }
 
-const handleAction = async (actionType: 'consume' | 'dispose' | 'receive') => {
+const handleAction = async (actionType: 'consume' | 'dispose') => {
   if (!itemData.value) return
   actionProcessing.value = true
-  
+
   try {
-    if (actionType === 'receive') {
-      await axios.put(`/api/reagents/items/${itemData.value.uuid}/status`, {
-        status: '在库',
-        location: itemData.value.location || '已领回本人存放点',
-        cabinet_id: itemData.value.cabinet_id
-      })
-      toast.success('已确认领回并入库')
-    } else if (actionType === 'consume') {
+    if (actionType === 'consume') {
+      if (!itemData.value.reagent_catalog?.is_controlled) {
+        toast.error('普通试剂不支持逐次消耗，请直接执行“用尽”')
+        return
+      }
       const remaining = Number(itemData.value.remaining_volume || 0)
       if (consumeVolume.value <= 0) {
         toast.error('消耗量必须大于 0')
-        actionProcessing.value = false
         return
       }
       if (consumeVolume.value > remaining) {
         toast.error('消耗量不能超过当前余量')
-        actionProcessing.value = false
         return
       }
       await axios.put(`/api/reagents/items/${itemData.value.uuid}/consume`, {
         consume_volume: Number(consumeVolume.value),
-        remarks: consumeRemarks.value || `详情页登记消耗 ${formatAmount(consumeVolume.value, consumeUnit.value)}`
+        remarks: consumeRemarks.value || `流转单登记消耗 ${consumeVolume.value}${consumeUnit.value}`,
       })
       toast.success('已登记试剂消耗')
-    } else if (actionType === 'dispose') {
-      if (!confirm('确认该试剂已经彻底使用完毕并需空瓶核销吗？')) {
-        actionProcessing.value = false; return;
-      }
+    } else {
+      if (!confirm('确认该试剂已经彻底使用完毕并需空瓶核销吗？')) return
       await axios.post(`/api/reagents/items/${itemData.value.uuid}/deplete`, {
-        remarks: '试剂详情执行耗尽核销'
+        remarks: '流转单执行耗尽核销',
       })
       toast.success('已空瓶核销该试剂')
     }
-    
+
     await fetchItemDetails()
     emit('refresh-needed')
-
-    } catch (e: any) {
+  } catch (e: any) {
     toast.error('操作失败: ' + (e.response?.data?.error || '服务器错误'))
   } finally {
     actionProcessing.value = false
   }
 }
+
 </script>
 
 <template>
@@ -153,7 +151,7 @@ const handleAction = async (actionType: 'consume' | 'dispose' | 'receive') => {
             <div class="flex items-center justify-between mb-4">
               <div class="flex items-center gap-3">
                 <Badge :variant="getStatusVariant(itemData.status)" class="px-3 h-6 font-bold uppercase tracking-widest">
-                  {{ itemData.status }}
+                  {{ getInventoryDisplayStatus(itemData.status) }}
                 </Badge>
                 <Badge v-if="itemData.reagent_catalog?.is_controlled" variant="destructive" class="px-2 h-5 text-[10px] font-bold">
                   管控品
@@ -196,13 +194,13 @@ const handleAction = async (actionType: 'consume' | 'dispose' | 'receive') => {
               </h3>
             </div>
 
-            <div v-if="!itemData.logs || itemData.logs.length === 0" class="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[11px] text-slate-400">
-              暂无流转历史
+            <div v-if="displayLogs.length === 0" class="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[11px] text-slate-400">
+              暂无可展示流转历史
             </div>
             <ol v-else class="relative space-y-4">
-              <li v-for="(log, idx) in itemData.logs" :key="log.id" class="group relative flex gap-6 pl-0">
+              <li v-for="(log, idx) in displayLogs" :key="log.id" class="group relative flex gap-6 pl-0">
                 <div
-                  v-if="Number(idx) < itemData.logs.length - 1"
+                  v-if="Number(idx) < displayLogs.length - 1"
                   class="absolute left-4 top-[34px] bottom-0 w-[1.5px] bg-slate-100"
                 ></div>
                 <div class="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white mt-[1.5px]">
@@ -233,16 +231,6 @@ const handleAction = async (actionType: 'consume' | 'dispose' | 'receive') => {
             </ol>
           </div>
 
-          <div v-if="itemData.reagent_request" class="apple-card p-5 bg-slate-50/40 border-slate-200/30 shadow-none">
-            <h4 class="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">原始申购记录溯源</h4>
-            <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-white/80 px-3 py-3">
-              <div>
-                <p class="text-sm font-bold text-slate-800">申购人：{{ itemData.reagent_request?.requestor?.real_name || 'System' }}</p>
-                <p class="text-xs text-slate-500 mt-1">{{ itemData.reagent_request?.remarks || '日常实验储备需求' }}</p>
-              </div>
-              <ChevronRight class="h-4 w-4 text-slate-300" />
-            </div>
-          </div>
         </div>
 
         <div class="lg:col-span-4 flex flex-col gap-4 text-nowrap">
@@ -270,7 +258,6 @@ const handleAction = async (actionType: 'consume' | 'dispose' | 'receive') => {
             <div class="space-y-2 text-[11px] text-slate-500">
               <p class="flex items-center gap-2"><MapPin class="h-3.5 w-3.5 text-cyan-500" /> 当前位置已记录，可扫码复核。</p>
               <p class="flex items-center gap-2"><CalendarClock class="h-3.5 w-3.5 text-amber-500" /> 有效期与存储条件已关联品目档案。</p>
-              <p v-if="itemData.reagent_request" class="flex items-center gap-2"><ShoppingCart class="h-3.5 w-3.5 text-blue-500" /> 可追溯至原始申购单。</p>
             </div>
           </div>
         </div>
@@ -281,51 +268,59 @@ const handleAction = async (actionType: 'consume' | 'dispose' | 'receive') => {
       <div v-if="itemData" class="flex flex-wrap gap-3 w-full items-center">
         <Button variant="secondary" @click="emit('close')">关闭详情</Button>
 
-        <div v-if="itemData.status === '已耗尽'" class="flex-1 flex items-center justify-center text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-50 rounded-xl">
+        <div v-if="isUsedStatus(itemData.status)" class="flex-1 flex items-center justify-center text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-50 rounded-xl">
           已完成全生命周期
         </div>
-
-        <template v-else>
-          <Button v-if="itemData.status === '已到货'" class="flex-1" variant="primary" @click="handleAction('receive')" :disabled="actionProcessing">
-            <Package class="w-4 h-4 mr-2" /> 确认领回入库
-          </Button>
-
-          <template v-else-if="itemData.status === '在库'">
-            <div class="flex-1 min-w-[260px] rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
-                <div class="sm:col-span-1">
-                  <label class="block text-[10px] text-slate-500 mb-1">本次消耗量</label>
-                  <div class="relative">
-                    <input
-                      v-model.number="consumeVolume"
-                      type="number"
-                      min="0"
-                      :max="itemData.remaining_volume"
-                      step="0.1"
-                      class="w-full h-9 rounded-lg border border-slate-200 bg-white px-2 pr-9 text-sm"
-                    />
-                    <span class="absolute right-2 top-2 text-xs text-slate-400">{{ consumeUnit }}</span>
-                  </div>
-                </div>
-                <div class="sm:col-span-2">
-                  <label class="block text-[10px] text-slate-500 mb-1">用途/备注（选填）</label>
+        <div v-else-if="isArrivedStatus(itemData.status)" class="flex-1 flex items-center justify-center text-xs font-medium text-slate-500 bg-slate-50 rounded-xl px-4 py-2">
+          该试剂处于待入库阶段，请在「到货台账」完成扫码入库
+        </div>
+        <template v-else-if="isInStorageStatus(itemData.status)">
+          <div v-if="itemData.reagent_catalog?.is_controlled" class="flex-1 min-w-[260px] rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
+              <div class="sm:col-span-1">
+                <label class="block text-[10px] text-slate-500 mb-1">本次消耗量</label>
+                <div class="relative">
                   <input
-                    v-model="consumeRemarks"
-                    type="text"
-                    class="w-full h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm"
-                    placeholder="如：滴定实验A组"
+                    v-model.number="consumeVolume"
+                    type="number"
+                    min="0"
+                    :max="itemData.remaining_volume"
+                    step="0.1"
+                    class="w-full h-9 rounded-lg border border-slate-200 bg-white px-2 pr-9 text-sm"
                   />
+                  <span class="absolute right-2 top-2 text-xs text-slate-400">{{ consumeUnit }}</span>
                 </div>
               </div>
+              <div class="sm:col-span-2">
+                <label class="block text-[10px] text-slate-500 mb-1">用途/备注（选填）</label>
+                <input
+                  v-model="consumeRemarks"
+                  type="text"
+                  class="w-full h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm"
+                  placeholder="如：滴定实验A组"
+                />
+              </div>
             </div>
-            <Button class="flex-1" variant="outline" @click="handleAction('dispose')" :disabled="actionProcessing">
-              <AlertTriangle class="w-4 h-4 mr-2 text-orange-500" /> 空瓶核销
-            </Button>
-            <Button class="flex-1 shadow-blue-100 shadow-lg" variant="primary" @click="handleAction('consume')" :disabled="actionProcessing || consumeVolume <= 0">
-              <TestTube2 class="w-4 h-4 mr-2" /> 确认消耗
-            </Button>
-          </template>
+          </div>
+          <div v-else class="flex-1 flex items-center justify-center text-xs font-medium text-slate-500 bg-slate-50 rounded-xl px-4 py-2">
+            普通试剂无需逐次消耗登记，可直接执行“用尽”
+          </div>
+          <Button class="flex-1" variant="outline" @click="handleAction('dispose')" :disabled="actionProcessing">
+            <AlertTriangle class="w-4 h-4 mr-2 text-orange-500" /> 用尽
+          </Button>
+          <Button
+            v-if="itemData.reagent_catalog?.is_controlled"
+            class="flex-1 shadow-blue-100 shadow-lg"
+            variant="primary"
+            @click="handleAction('consume')"
+            :disabled="actionProcessing || consumeVolume <= 0"
+          >
+            <TestTube2 class="w-4 h-4 mr-2" /> 使用
+          </Button>
         </template>
+        <div v-else class="flex-1 flex items-center justify-center text-xs font-medium text-slate-500 bg-slate-50 rounded-xl px-4 py-2">
+          该页面仅展示流转记录，不提供执行操作
+        </div>
       </div>
     </template>
   </Dialog>

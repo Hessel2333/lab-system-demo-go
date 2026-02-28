@@ -6,6 +6,7 @@ import Input from '@/components/ui/Input.vue'
 import Card from '@/components/ui/Card.vue'
 import Badge from '@/components/ui/Badge.vue'
 import axios from 'axios'
+import { getInventoryDisplayStatus, isArrivedStatus, isInStorageStatus, isUsedStatus } from '@/lib/reagent-status'
 
 interface Cabinet { id: number; name: string; cabinet_type: string; location: string }
 
@@ -50,7 +51,7 @@ const handleScanMock = () => {
   fetchItem(scannedUUID.value)
 }
 
-const getStatusLabel = (status: string) => status
+const getStatusLabel = (status: string) => getInventoryDisplayStatus(status)
 
 const fetchItem = async (uuid: string) => {
   isLoading.value = true
@@ -63,7 +64,7 @@ const fetchItem = async (uuid: string) => {
     if (currentItem.value.cabinet_id) cabinetInput.value = currentItem.value.cabinet_id
 
     // 根据品目管控属性加载对应柜列表
-    if (currentItem.value.status === '已到货') {
+    if (isArrivedStatus(currentItem.value.status)) {
       await loadCabinets(currentItem.value.reagent_catalog?.is_controlled ?? false)
     }
   } catch (error) {
@@ -126,9 +127,9 @@ const updateStatus = async (newStatus: string) => {
     <!-- Scanned Result Card -->
     <Card v-if="currentItem" class="overflow-hidden border-l-4" 
         :class="{
-            'border-l-blue-500': currentItem.status === '已到货',
-            'border-l-green-500': currentItem.status === '在库',
-            'border-l-gray-500': currentItem.status === '已耗尽'
+            'border-l-blue-500': isArrivedStatus(currentItem.status),
+            'border-l-green-500': isInStorageStatus(currentItem.status),
+            'border-l-gray-500': isUsedStatus(currentItem.status)
         }">
       <div class="p-6 space-y-6">
           <div>
@@ -143,7 +144,7 @@ const updateStatus = async (newStatus: string) => {
               </div>
               <div>
                   <span class="text-xs text-gray-400">当前状态</span>
-                  <p><Badge :variant="currentItem.status === '在库' ? 'default' : 'secondary'">{{ getStatusLabel(currentItem.status) }}</Badge></p>
+                  <p><Badge :variant="isInStorageStatus(currentItem.status) ? 'default' : 'secondary'">{{ getStatusLabel(currentItem.status) }}</Badge></p>
               </div>
               <div>
                   <span class="text-xs text-gray-400">当前位置</span>
@@ -157,7 +158,7 @@ const updateStatus = async (newStatus: string) => {
 
           <!-- Actions based on status -->
           <div class="pt-4 border-t">
-              <div v-if="currentItem.status === '已到货'" class="space-y-3">
+              <div v-if="isArrivedStatus(currentItem.status)" class="space-y-3">
                   <p class="text-sm font-medium text-blue-800 bg-blue-50 p-3 rounded-lg">
                     💡 此试剂已从供应商到货，位于暂存区。请选择存放的试剂柜和实验室位置并确认入库。
                   </p>
@@ -195,7 +196,7 @@ const updateStatus = async (newStatus: string) => {
               </div>
 
               <!-- Status: InStorage -> Consume/Dispose -->
-              <div v-else-if="currentItem.status === '在库'" class="space-y-3">
+              <div v-else-if="isInStorageStatus(currentItem.status)" class="space-y-3">
                    <p class="text-sm font-medium text-green-800 bg-green-50 p-3 rounded-lg">
                     ✅ 此试剂目前在库，存放于 {{ currentItem.location }}。
                    </p>
@@ -206,7 +207,7 @@ const updateStatus = async (newStatus: string) => {
               </div>
 
               <!-- Status: Used -->
-              <div v-else-if="currentItem.status === '已耗尽'" class="text-center py-4">
+              <div v-else-if="isUsedStatus(currentItem.status)" class="text-center py-4">
                   <p class="text-sm text-gray-500">此试剂已完成生命周期 (空瓶核销)。</p>
               </div>
           </div>

@@ -36,6 +36,9 @@ func main() {
 		&models.ProcurementBatchItem{},
 		&models.ReagentDispenseRequest{},
 	)
+	if err := database.CleanupLegacySchema(); err != nil {
+		log.Fatalf("Failed to cleanup legacy schema: %v", err)
+	}
 
 	// 3. Init Router
 	r := gin.Default()

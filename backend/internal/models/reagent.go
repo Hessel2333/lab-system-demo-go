@@ -60,8 +60,6 @@ type ReagentRequest struct {
 // ReagentItem represents a specific physical bottle/item (Serialized)
 type ReagentItem struct {
 	UUID             string         `gorm:"primaryKey;type:char(36)" json:"uuid"`
-	ReagentRequestID uint           `json:"reagent_request_id"`
-	ReagentRequest   ReagentRequest `gorm:"foreignKey:ReagentRequestID" json:"reagent_request"`
 	ReagentCatalogID uint           `json:"reagent_catalog_id"`
 	ReagentCatalog   ReagentCatalog `gorm:"foreignKey:ReagentCatalogID" json:"reagent_catalog"`
 
@@ -157,12 +155,12 @@ type ProcurementBatchItem struct {
 	ProductCategory  string  `json:"product_category"`  // 商品类别
 
 	// 匹配结果
-	MatchedCatalogID *uint  `json:"matched_catalog_id"`                  // 匹配到的品目 ID
-	MatchedRequestID *uint  `json:"matched_request_id"`                  // 匹配到的申购单 ID
-	MatchedUserID    *uint  `json:"matched_user_id"`                     // 匹配到的直接使用人 ID (无申购单直接发库用)
-	MatchStatus      string `json:"match_status"`                        // 自动匹配 / 手动匹配 / 未匹配
-	ReceiveStatus    string `json:"receive_status" gorm:"default:'待收货'"` // 待收货 / 部分收货 / 已收货
-	ReceivedQuantity int    `json:"received_quantity" gorm:"default:0"`
+	MatchedCatalogID  *uint  `json:"matched_catalog_id"`                  // 匹配到的品目 ID
+	MatchedUserID     *uint  `json:"matched_user_id"`                     // 匹配到的直接使用人 ID
+	RequestSuggestion string `json:"request_suggestion"`                  // 仅用于展示的申购建议文本，不保留结构性外键
+	MatchStatus       string `json:"match_status"`                        // 自动匹配 / 手动匹配 / 未匹配
+	ReceiveStatus     string `json:"receive_status" gorm:"default:'待收货'"` // 待收货 / 部分收货 / 已收货
+	ReceivedQuantity  int    `json:"received_quantity" gorm:"default:0"`
 
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`

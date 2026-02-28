@@ -97,7 +97,7 @@ const rolePrimaryCards = computed<InsightCard[]>(() => {
         key: 'p-receiving-todo',
         title: '收货待处理行',
         value: toNumber(focus.receiving_todo_lines),
-        hint: '可进入到货台账点验赋码',
+        hint: '可进入到货台账完成到货确认与赋码',
         valueClass: 'text-blue-600',
       },
       {
@@ -176,15 +176,15 @@ const roleTodos = computed<TodoItem[]>(() => {
       },
       {
         key: 'todo-p-receiving',
-        title: '到货点验',
+        title: '到货确认',
         count: toNumber(focus.receiving_todo_lines),
-        hint: '待收货明细建议当日完成赋码',
+        hint: '待到货明细建议当日完成赋码',
       },
       {
         key: 'todo-p-import',
         title: '导入匹配',
         count: toNumber(focus.unmatched_import_lines),
-        hint: '未匹配项目会阻塞批次确认',
+        hint: '未匹配项目会影响后续到货处理',
       },
     ]
     return items.map((item) => ({ ...item, priority: makePriority(item.count) }))

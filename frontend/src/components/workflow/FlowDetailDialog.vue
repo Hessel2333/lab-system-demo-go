@@ -124,7 +124,7 @@ const documentBadgeClass = (type?: string) => {
         </div>
 
         <!-- 右侧辅助增强区 (嵌入层级) -->
-        <div class="lg:col-span-4 flex flex-col gap-4 text-nowrap">
+        <div class="lg:col-span-4 min-w-0 flex flex-col gap-4">
           <!-- 关联附件 -->
           <div class="apple-card p-5 bg-slate-50/40 border-slate-200/30 shadow-none">
             <h4 class="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">关联文档</h4>
@@ -166,7 +166,7 @@ const documentBadgeClass = (type?: string) => {
               <div
                 v-for="(note, idx) in notes"
                 :key="idx"
-                class="text-[11px] leading-tight text-slate-500 flex items-start gap-2"
+                class="min-w-0 whitespace-normal break-words text-[11px] leading-tight text-slate-500 flex items-start gap-2"
               >
                 <div class="mt-1.5 h-0.5 w-0.5 shrink-0 rounded-full bg-slate-400/60"></div>
                 {{ note.text }}
