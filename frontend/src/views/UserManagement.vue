@@ -1,16 +1,22 @@
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { fetchDepartments, fetchUsers, createUser, updateUser, deleteUser, type Department, type User } from '@/api/organization'
 import DepartmentTreeItem from '@/components/organization/DepartmentTreeItem.vue'
 import UserDialog from '@/components/organization/UserDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import UserPermissionDialog from '@/components/organization/UserPermissionDialog.vue'
+import TableSection from '@/components/ui/TableSection.vue'
+import Input from '@/components/ui/Input.vue'
+import Button from '@/components/ui/Button.vue'
+import { Loader2, Search } from 'lucide-vue-next'
 
 const departments = ref<Department[]>([])
 const users = ref<User[]>([])
 const loading = ref(false)
 const selectedDept = ref<Department | null>(null)
+const searchQuery = ref('')
+const roleFilter = ref('全部')
 
 // Dialog State
 const showDialog = ref(false)
@@ -134,6 +140,33 @@ const roleName = (role: string) => {
     }
     return map[role] || role
 }
+
+const roleOptions = computed(() => {
+    const unique = new Set(users.value.map((user) => roleName(user.role)))
+    return ['全部', ...Array.from(unique)]
+})
+
+const filteredUsers = computed(() => {
+    let result = users.value
+    if (roleFilter.value !== '全部') {
+        result = result.filter((user) => roleName(user.role) === roleFilter.value)
+    }
+    const q = searchQuery.value.trim().toLowerCase()
+    if (q) {
+        result = result.filter((user) =>
+            user.real_name?.toLowerCase().includes(q) ||
+            user.username?.toLowerCase().includes(q)
+        )
+    }
+    return result
+})
+
+const sectionTitle = computed(() => {
+    if (!selectedDept.value) return '人员台账'
+    return `${selectedDept.value.name} · 人员台账`
+})
+
+const sectionDescription = computed(() => `共 ${users.value.length} 位成员`)
 </script>
 
 <template>
@@ -155,80 +188,92 @@ const roleName = (role: string) => {
 
 
       <!-- Main Content: User List -->
-      <div class="flex-1 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col min-w-0">
-          <!-- Header -->
-          <div class="p-6 border-b border-gray-100 flex justify-between items-center">
-              <div>
-                  <h1 class="text-xl font-bold text-gray-900 flex items-center gap-2">
-                       {{ selectedDept?.name || '所有人员' }}
-                       <span v-if="selectedDept" class="px-2 py-0.5 rounded-full bg-gray-100 text-xs font-normal text-gray-500">{{ selectedDept.type }}</span>
-                  </h1>
-                  <p class="text-sm text-gray-500 mt-1">
-                      共 {{ users.length }} 位成员
-                  </p>
-              </div>
-              <button 
-                @click="handleAddUser"
-                :disabled="!selectedDept"
-                class="bg-black text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                  添加成员
-              </button>
-          </div>
+      <TableSection class="min-w-0 flex-1" :title="sectionTitle" :description="sectionDescription">
+        <template #actions>
+          <Button
+            variant="primary"
+            size="sm"
+            :disabled="!selectedDept"
+            @click="handleAddUser"
+          >
+            添加成员
+          </Button>
+        </template>
 
-          <!-- Table -->
-          <div class="flex-1 overflow-auto p-0">
-              <table class="w-full text-left text-sm">
-                  <thead class="bg-gray-50 text-gray-500 font-medium border-b border-gray-100">
-                      <tr>
-                          <th class="px-6 py-3">姓名</th>
-                          <th class="px-6 py-3">工号/用户名</th>
-                          <th class="px-6 py-3">角色</th>
-                          <th class="px-6 py-3">状态</th>
-                          <th class="px-6 py-3 text-right">操作</th>
-                      </tr>
-                  </thead>
-                  <tbody class="divide-y divide-gray-100">
-                      <tr v-for="user in users" :key="user.ID" class="hover:bg-gray-50/50 transition-colors group">
-                          <td class="px-6 py-3 font-medium text-gray-900 flex items-center gap-3">
-                              <div class="w-8 h-8 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-xs font-bold text-gray-600">
-                                  {{ user.real_name[0] }}
-                              </div>
-                              {{ user.real_name }}
-                          </td>
-                          <td class="px-6 py-3 text-gray-500 font-mono text-xs">{{ user.username }}</td>
-                          <td class="px-6 py-3">
-                              <span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium" :class="roleBadgeClass(user.role)">
-                                  {{ roleName(user.role) }}
-                              </span>
-                          </td>
-                          <td class="px-6 py-3">
-                              <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700">
-                                  <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                                  在职
-                              </span>
-                          </td>
-                          <td class="px-6 py-3 text-right flex justify-end gap-3">
-                              <button @click="handlePermission(user)" class="text-indigo-600 hover:text-indigo-800 font-medium text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                                  权限
-                              </button>
-                              <button @click="handleEditUser(user)" class="text-blue-600 hover:text-blue-800 font-medium text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                                  编辑
-                              </button>
-                              <button @click="handleDeleteUser(user.ID)" class="text-red-400 hover:text-red-600 font-medium text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                                  删除
-                              </button>
-                          </td>
-                      </tr>
-                      <tr v-if="users.length === 0 && !loading">
-                          <td colspan="5" class="px-6 py-12 text-center text-gray-400">
-                              暂无人员数据
-                          </td>
-                      </tr>
-                  </tbody>
-              </table>
+        <template #toolbar>
+          <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
+            <div class="relative w-full sm:w-80">
+              <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+              <Input v-model="searchQuery" class="pl-9" placeholder="搜索姓名或用户名..." />
+            </div>
+            <div class="apple-segmented w-fit sm:ml-auto">
+              <button
+                v-for="option in roleOptions"
+                :key="option"
+                @click="roleFilter = option"
+                :class="['apple-segmented-btn', roleFilter === option ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']"
+              >
+                {{ option }}
+              </button>
+            </div>
           </div>
-      </div>
+        </template>
+
+        <div v-if="loading" class="flex justify-center py-10">
+          <Loader2 class="h-8 w-8 animate-spin text-gray-400" />
+        </div>
+        <div v-else-if="filteredUsers.length === 0" class="apple-table-empty">
+          暂无符合条件的人员数据。
+        </div>
+        <div v-else class="apple-table-wrap">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-gray-50 text-gray-500 font-medium border-b border-gray-100">
+              <tr>
+                <th class="px-6 py-3">姓名</th>
+                <th class="px-6 py-3">工号/用户名</th>
+                <th class="px-6 py-3">角色</th>
+                <th class="px-6 py-3">状态</th>
+                <th class="px-6 py-3 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr v-for="user in filteredUsers" :key="user.ID" class="hover:bg-gray-50/50 transition-colors group">
+                <td class="px-6 py-3 font-medium text-gray-900 flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-xs font-bold text-gray-600">
+                    {{ user.real_name?.[0] || 'U' }}
+                  </div>
+                  {{ user.real_name }}
+                </td>
+                <td class="px-6 py-3 text-gray-500 font-mono text-xs">{{ user.username }}</td>
+                <td class="px-6 py-3">
+                  <span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium" :class="roleBadgeClass(user.role)">
+                    {{ roleName(user.role) }}
+                  </span>
+                </td>
+                <td class="px-6 py-3">
+                  <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                    <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                    在职
+                  </span>
+                </td>
+                <td class="px-6 py-3 text-right">
+                  <div class="flex justify-end gap-3">
+                    <button @click="handlePermission(user)" class="text-indigo-600 hover:text-indigo-800 font-medium text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                      权限
+                    </button>
+                    <button @click="handleEditUser(user)" class="text-blue-600 hover:text-blue-800 font-medium text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                      编辑
+                    </button>
+                    <button @click="handleDeleteUser(user.ID)" class="text-red-400 hover:text-red-600 font-medium text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                      删除
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </TableSection>
       
       <UserDialog 
          v-model="showDialog"

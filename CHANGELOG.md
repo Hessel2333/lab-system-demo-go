@@ -49,6 +49,65 @@
 - `ResearcherArrivalList`（研发到货台账）切换到统一框架，和采购到货台账在头部、工具条与空态语义上保持一致。
 - `ReagentUnifiedInventory`（库存台账）切换到统一框架，团队/全库双视图保持同一页面骨架与工具条规范。
 - `ReagentDispensePanel`（领用台账）切换到统一框架，研发视角保持“左台账 + 右侧固定申请面板”，采购/负责人视角复用同一流程台账结构。
+- `ProcurementBatchImport`（采购导入）切换到统一框架，上传/匹配/完成三步共用同一 `TableSection` 容器，并统一步骤状态角标与工具条布局。
+- `UserManagement`（人员管理）切换到统一框架，组织树右侧列表区统一为 `TableSection`，新增搜索与角色筛选工具条。
+- `SupplierManagement`（供应商管理）切换到统一框架，统一头部/工具条/表格容器，并补充搜索、类型筛选、状态筛选。
+- `MasterDataCenter`（基础数据中心）非试剂子模块补齐统一台账占位骨架，后续字段与流程将按同一规范扩展。
+
+### ✅ 流程与权限治理文档已补齐
+
+- 新增《流程与交互统一框架设计（v1）》：`流程与交互统一框架设计.md`
+- 新增《权限与流程规则说明书（v1）》：`权限与流程规则说明书.md`
+- 明确“资源-动作-范围”权限模型、统一状态机策略与三条链路的动作授权基线。
+
+### ✅ 统一鉴权入口（第一阶段）已落地
+
+- 新增后端统一鉴权内核：`backend/internal/authz/policy.go`，抽象 `resource + action + scope` 判定入口。
+- 新增处理层鉴权桥接：`backend/internal/handlers/authz_helper.go`，统一返回 `403 permission denied` 结构。
+- 新增鉴权单元测试：`backend/internal/authz/policy_test.go`，覆盖角色映射与核心动作授权分支。
+- 已在关键流程动作接入统一鉴权：
+  - `ConfirmProcurementBatch`（采购批次确认）
+  - `ReceiveBatchItem`（采购点收）
+  - `CheckInReagentItem`（研发扫码入库）
+  - `CreateDispenseRequest`（领用申请）
+  - `LeaderApproveDispense`（团队长审批领用）
+  - `KeyHolderConfirmDispense`（双签确认）
+
+### ✅ 统一流程组件试点（第二阶段）已落地
+
+- 新增流程组件（可复用）：
+  - `frontend/src/components/workflow/FlowStatusPill.vue`（统一状态标签）
+  - `frontend/src/components/workflow/FlowTimeline.vue`（统一流程时间轴）
+  - `frontend/src/components/workflow/FlowActionPanel.vue`（统一动作面板）
+- 领用链路完成试点接入：`frontend/src/components/reagents/ReagentDispensePanel.vue`
+  - 研发/采购/团队长统一使用同一“流程卡片结构”；
+  - 角色差异仅体现在动作列表（审批、双签确认）；
+  - 状态展示与流程节点从页面内零散样式改为组件化渲染。
+- 前端构建验证通过：`npm run build`（2026-02-27）。
+
+### ✅ 领用流转弹窗样式与信息口径已统一
+
+- 领用台账新增统一“流转单”入口，弹窗改为标准四段结构：摘要区 / 时间轴区 / 动作区 / 补充说明区。
+- 时间轴补齐“节点状态 + 描述 + 处理人 + 处理时间”，避免仅显示状态标签。
+- 无可执行动作时不再显示空动作卡片，改为只读提示。
+- UI 规范文档补充“流转弹窗规范（Flow Detail Dialog）”：`UI_SPEC.md`。
+- 视觉样式二次打磨：优化留白、层次与状态卡片表现，动作区改为侧栏粘性布局，时间轴节点改为卡片化呈现。
+- 根据 `FLOW_DESIGN_SPEC.md` 完成“领用流转单”样式落地：
+  - 主弹窗采用 `8:4` 双栏模型、`min-h-[550px]`、`gap-4`；
+  - 时间轴采用 `h-8/w-8` 节点、`top-[34px]` 连线、`mt-[1.5px]` 微调与 `pb-4` 步进；
+  - 进行中节点接入 `animate-pulse-soft` 微光脉冲效果；
+  - 右栏补齐“关联文档/流转操作/附注”分区，统一 Apple 轻量材质层级。
+- 细节修正：
+  - 移除流转单随机号，改为读取真实元信息字段；
+  - 右栏操作区去除重复标题，保持与规范一致的信息密度。
+- 申购台账流转弹窗已迁移至同一 `FlowDetailDialog` 体系：
+  - `RequestProgressDialog.vue` 改为流程数据映射层，统一复用同款视觉模板；
+  - 申购链路已支持同样的 8:4 布局、节点时间轴、关联文档与备注分区展示；
+  - 到货实体状态（已到货/在库）映射为流转备注，保留核心跟踪信息。
+- 每瓶试剂“全生命周期流转单”已对齐同风格：
+  - `ItemLifecycleDialog.vue` 重构为 8:4 双栏与 Apple 卡片层级；
+  - 保留个体档案特有信息（二维码、库位、有效期、原始申购溯源、完整操作日志）；
+  - 底部操作区（领回入库、消耗登记、空瓶核销）保持原有业务能力不变，仅统一视觉与信息层级。
 
 ## [2026-02-27] - 领用审批固定持有人与跨角色台账统一
 

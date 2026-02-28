@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"lab-system-backend/internal/authz"
 	"lab-system-backend/internal/database"
 	"lab-system-backend/internal/models"
 
@@ -49,6 +50,13 @@ func getUserIDOrDefault(c *gin.Context, fallback int) uint {
 		return uint(fallback)
 	}
 	return uint(id)
+}
+
+func derefUint(v *uint) uint {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 func procurementItemFingerprint(item models.ProcurementBatchItem) string {
@@ -855,8 +863,17 @@ func CheckInReagentItem(c *gin.Context) {
 	}
 
 	var item models.ReagentItem
-	if err := database.DB.Preload("ReagentCatalog").Where("uuid = ?", uuid).First(&item).Error; err != nil {
+	if err := database.DB.Preload("ReagentCatalog").Preload("ReagentRequest").Where("uuid = ?", uuid).First(&item).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Item not found"})
+		return
+	}
+
+	if _, ok := authorizeAction(c, authz.PermissionRequest{
+		Resource: authz.ResourceReagentItem,
+		Action:   authz.ActionCheckIn,
+		Scope:    authz.ScopeSelf,
+		OwnerID:  item.ReagentRequest.RequestorID,
+	}, 1); !ok {
 		return
 	}
 
@@ -1399,6 +1416,14 @@ func UpdateProcurementBatchItem(c *gin.Context) {
 
 // ConfirmProcurementBatch 确认批次并触发到货赋码
 func ConfirmProcurementBatch(c *gin.Context) {
+	if _, ok := authorizeAction(c, authz.PermissionRequest{
+		Resource: authz.ResourceProcurementBatch,
+		Action:   authz.ActionConfirmBatch,
+		Scope:    authz.ScopeGlobal,
+	}, 1); !ok {
+		return
+	}
+
 	batchID := c.Param("id")
 	var batch models.ProcurementBatch
 	if err := database.DB.Preload("Items").First(&batch, batchID).Error; err != nil {
@@ -1463,6 +1488,14 @@ func GetPendingReceives(c *gin.Context) {
 
 // ReceiveBatchItem 采购人员在“收货工作台”对着单一点货，触发物理资产生成与原始单据闭环
 func ReceiveBatchItem(c *gin.Context) {
+	if _, ok := authorizeAction(c, authz.PermissionRequest{
+		Resource: authz.ResourceProcurementBatch,
+		Action:   authz.ActionReceive,
+		Scope:    authz.ScopeGlobal,
+	}, 1); !ok {
+		return
+	}
+
 	itemID := c.Param("itemId")
 	var input struct {
 		Quantity int `json:"quantity"` // 实收点验瓶数
@@ -1550,6 +1583,16 @@ func CreateDispenseRequest(c *gin.Context) {
 	}
 
 	requesterID := getUserIDOrDefault(c, 1)
+	actor, ok := authorizeAction(c, authz.PermissionRequest{
+		Resource: authz.ResourceDispenseRequest,
+		Action:   authz.ActionApply,
+		Scope:    authz.ScopeSelf,
+		OwnerID:  requesterID,
+	}, 1)
+	if !ok {
+		return
+	}
+	requesterID = actor.UserID
 
 	// 检查该试剂是否存在且在库
 	var reagentItem models.ReagentItem
@@ -1652,8 +1695,18 @@ func GetDispenseNotifications(c *gin.Context) {
 func LeaderApproveDispense(c *gin.Context) {
 	id := c.Param("id")
 	var dispReq models.ReagentDispenseRequest
-	if err := database.DB.Preload("ReagentItem.ReagentCatalog").First(&dispReq, id).Error; err != nil {
+	if err := database.DB.Preload("Requester").Preload("ReagentItem.ReagentCatalog").First(&dispReq, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Dispense request not found"})
+		return
+	}
+
+	actor, ok := authorizeAction(c, authz.PermissionRequest{
+		Resource:     authz.ResourceDispenseRequest,
+		Action:       authz.ActionLeaderApprove,
+		Scope:        authz.ScopeTeam,
+		DepartmentID: dispReq.Requester.DepartmentID,
+	}, 1)
+	if !ok {
 		return
 	}
 
@@ -1671,7 +1724,7 @@ func LeaderApproveDispense(c *gin.Context) {
 		return
 	}
 
-	leaderIDUint := getUserIDOrDefault(c, 101)
+	leaderIDUint := actor.UserID
 	now := time.Now()
 
 	if !body.Approved {
@@ -1747,6 +1800,17 @@ func KeyHolderConfirmDispense(c *gin.Context) {
 		return
 	}
 
+	actor, ok := authorizeAction(c, authz.PermissionRequest{
+		Resource:     authz.ResourceDispenseRequest,
+		Action:       authz.ActionKeyHolderConfirm,
+		Scope:        authz.ScopeAssigned,
+		KeyHolderAID: derefUint(dispReq.KeyHolderAID),
+		KeyHolderBID: derefUint(dispReq.KeyHolderBID),
+	}, 1)
+	if !ok {
+		return
+	}
+
 	if dispReq.Status != "待双签" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Request is not awaiting dual key confirmation"})
 		return
@@ -1770,7 +1834,7 @@ func KeyHolderConfirmDispense(c *gin.Context) {
 		return
 	}
 
-	holderIDUint := getUserIDOrDefault(c, 1)
+	holderIDUint := actor.UserID
 	now := time.Now()
 
 	if !body.Confirmed {

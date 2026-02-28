@@ -129,171 +129,204 @@ const handleAction = async (actionType: 'consume' | 'dispose' | 'receive') => {
 </script>
 
 <template>
-  <Dialog :open="isOpen" size="lg" @close="emit('close')">
+  <Dialog :open="isOpen" size="xl" @close="emit('close')">
     <template #header>
       <div class="flex flex-col">
-        <span class="text-xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
-          <History class="w-5 h-5 text-blue-600" />
-          试剂个体防伪档案
+        <span class="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+          <History class="h-5 w-5 text-blue-600" />
+          试剂个体全生命周期流转单
         </span>
-        <span class="text-xs text-gray-400 font-mono mt-0.5 uppercase tracking-wider">UUID: {{ itemUuid }}</span>
+        <span class="text-xs font-mono text-slate-400 mt-0.5 uppercase tracking-wider">UUID: {{ itemUuid }}</span>
       </div>
     </template>
 
     <div v-if="loading" class="p-12">
-       <div class="flex justify-center items-center h-48">
-          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-       </div>
+      <div class="flex h-48 items-center justify-center">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
     </div>
 
-    <!-- Content -->
-    <div v-else-if="itemData" class="p-6 space-y-6">
-      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-         <div class="p-6 flex gap-8">
-           <div class="flex-1">
-             <div class="flex items-center gap-3 mb-3">
-                 <Badge :variant="getStatusVariant(itemData.status)" class="px-3 h-6 font-bold uppercase tracking-widest">
-                   {{ itemData.status }}
-                 </Badge>
-                 <Badge v-if="itemData.reagent_catalog?.is_controlled" variant="destructive" class="px-2 h-5 text-[10px] font-bold">
-                   管控品
-                 </Badge>
-             </div>
-             <h1 class="text-2xl font-bold text-gray-900 tracking-tight">{{ itemData.reagent_catalog?.name }}</h1>
-             <p class="text-sm font-mono text-gray-500 mt-1">CAS 号: {{ itemData.reagent_catalog?.cas_number || '未知' }}</p>
-             
-             <div class="grid grid-cols-2 gap-4 mt-6">
-               <div>
-                  <label class="text-[10px] text-gray-400 uppercase font-bold tracking-widest px-0.5">剩余余量</label>
-                  <div class="flex items-end gap-1.5 mt-1">
-                    <span class="text-2xl font-bold font-mono tracking-tight" :class="itemData.remaining_volume > 0 ? 'text-blue-600' : 'text-red-500'">{{ formatNumber(itemData.remaining_volume) }}</span>
-                    <span class="text-sm text-gray-400 font-medium mb-1">/ {{ formatNumber(itemData.capacity) }} {{ normalizeUnit(itemData.reagent_catalog?.unit, 'ml') }}</span>
-                  </div>
-               </div>
-               <div>
-                  <label class="text-[10px] text-gray-400 uppercase font-bold tracking-widest px-0.5">批次来源</label>
-                  <p class="text-sm font-mono font-bold text-gray-700 mt-1 h-8 flex items-center">{{ itemData.batch_number }}</p>
-               </div>
-             </div>
-           </div>
-
-           <div class="w-28 shrink-0 flex flex-col items-center justify-center bg-gray-50 rounded-2xl border border-gray-100 p-4">
-             <QrCode class="w-12 h-12 text-gray-800" stroke-width="1.5" />
-             <span class="text-[10px] text-gray-400 font-mono mt-3 tracking-widest font-bold">{{ itemUuid?.substring(0,8).toUpperCase() }}</span>
-             <span class="text-[9px] text-gray-400 mt-1 opacity-60">扫码防伪溯源</span>
-           </div>
-         </div>
-      </div>
-
-      <div class="grid grid-cols-2 gap-4">
-         <div class="bg-gray-50/50 rounded-2xl border border-gray-100/60 p-5">
-            <h3 class="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><MapPin class="h-4 w-4 text-cyan-500"/> 库位坐标记录</h3>
-            <div class="space-y-3 text-sm">
-              <div class="flex items-center justify-between"><span class="text-gray-500">实物位置</span> <span class="font-bold text-gray-800">{{ itemData.location || '--' }}</span></div>
-              <div class="flex items-center justify-between"><span class="text-gray-500">归属柜位</span> <span class="font-bold text-gray-800">{{ itemData.cabinet?.name || '公用区' }}</span></div>
+    <div v-else-if="itemData" class="bg-slate-50/80 px-6 py-4 min-h-[550px]">
+      <div class="grid gap-4 lg:grid-cols-12">
+        <div class="lg:col-span-8 flex flex-col gap-4">
+          <div class="apple-card apple-card-hover p-5 border-blue-50/50">
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center gap-3">
+                <Badge :variant="getStatusVariant(itemData.status)" class="px-3 h-6 font-bold uppercase tracking-widest">
+                  {{ itemData.status }}
+                </Badge>
+                <Badge v-if="itemData.reagent_catalog?.is_controlled" variant="destructive" class="px-2 h-5 text-[10px] font-bold">
+                  管控品
+                </Badge>
+              </div>
+              <span class="text-[11px] font-bold text-slate-400 bg-slate-100/80 px-1.5 py-0.5 rounded">
+                #{{ itemData.uuid?.substring(0, 8).toUpperCase() }}
+              </span>
             </div>
-         </div>
-         
-         <div class="bg-gray-50/50 rounded-2xl border border-gray-100/60 p-5">
-            <h3 class="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><CalendarClock class="h-4 w-4 text-amber-500"/> 存储有效期档案</h3>
-            <div class="space-y-3 text-sm">
-              <div class="flex items-center justify-between"><span class="text-gray-500">存储要求</span> <span class="font-bold text-gray-800 text-xs">{{ itemData.reagent_catalog?.storage_condition || '常温避光' }}</span></div>
-              <div class="flex items-center justify-between"><span class="text-gray-500">失效日期</span> <span :class="itemData.expiry_date && new Date(itemData.expiry_date) < new Date() ? 'text-red-600 font-bold' : 'font-bold text-gray-800'">{{ itemData.expiry_date ? new Date(itemData.expiry_date).toLocaleDateString() : '长期有效' }}</span></div>
+
+            <h2 class="text-2xl font-bold tracking-tight text-slate-900">{{ itemData.reagent_catalog?.name }}</h2>
+            <p class="text-sm font-mono text-slate-500 mt-1">CAS 号: {{ itemData.reagent_catalog?.cas_number || '未知' }}</p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
+              <div class="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                <div class="text-[10px] font-bold uppercase tracking-widest text-slate-400">剩余余量</div>
+                <div class="mt-1 flex items-end gap-1.5">
+                  <span class="text-2xl font-bold font-mono tracking-tight" :class="itemData.remaining_volume > 0 ? 'text-blue-600' : 'text-red-500'">
+                    {{ formatNumber(itemData.remaining_volume) }}
+                  </span>
+                  <span class="text-xs text-slate-400 mb-1">/ {{ formatNumber(itemData.capacity) }} {{ normalizeUnit(itemData.reagent_catalog?.unit, 'ml') }}</span>
+                </div>
+              </div>
+              <div class="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                <div class="text-[10px] font-bold uppercase tracking-widest text-slate-400">批次来源</div>
+                <div class="mt-1 text-sm font-mono font-bold text-slate-700">{{ itemData.batch_number || '-' }}</div>
+              </div>
+              <div class="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                <div class="text-[10px] font-bold uppercase tracking-widest text-slate-400">当前库位</div>
+                <div class="mt-1 text-sm font-bold text-slate-700">{{ itemData.location || '--' }}</div>
+              </div>
             </div>
-         </div>
-      </div>
+          </div>
 
-      <div class="bg-blue-50/30 rounded-2xl border border-blue-100/50 p-5" v-if="itemData.reagent_request">
-         <h3 class="text-[11px] font-bold text-blue-800 uppercase tracking-widest mb-4 flex items-center gap-2"><ShoppingCart class="h-4 w-4"/> 原始申购记录溯源</h3>
-         <div class="flex justify-between items-center bg-white p-4 rounded-xl border border-blue-100 shadow-sm transition-hover hover:border-blue-300">
-           <div>
-              <p class="text-sm text-gray-900 font-bold">申购人：{{ itemData.reagent_request?.requestor?.real_name || 'System' }}</p>
-              <p class="text-xs text-gray-500 mt-1 line-clamp-1 italic text-blue-900/40">"{{ itemData.reagent_request?.remarks || '日常实验储备需求' }}"</p>
-           </div>
-           <ChevronRight class="h-5 w-5 text-blue-200" />
-         </div>
-      </div>
+          <div class="apple-card apple-card-hover p-5 flex-grow shadow-md border-slate-200/40">
+            <div class="mb-4 flex items-center justify-between border-b border-slate-50 pb-3">
+              <h3 class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                <History class="h-3.5 w-3.5" />
+                全生命周期操作流转
+              </h3>
+            </div>
 
-      <div>
-        <h3 class="text-sm font-bold text-gray-900 mb-6 flex items-center gap-2 px-1">
-          <History class="h-4 w-4 text-indigo-500" />
-          全生命周期操作流转
-        </h3>
-        
-        <div class="relative pl-6 space-y-8 before:absolute before:inset-0 before:left-[11px] before:h-full before:w-0.5 before:bg-gray-100">
-           <div v-if="!itemData.logs || itemData.logs.length === 0" class="text-xs text-gray-400 py-4 font-medium italic">暂无流转历史...</div>
-           <div v-else>
-               <div v-for="log in itemData.logs" :key="log.id" class="relative pl-10 mb-8 last:mb-0">
-                  <div class="absolute -left-[19px] top-0 flex items-center justify-center w-5 h-5 rounded-full bg-white border-2 border-gray-200 z-10" v-if="log">
-                    <div class="w-1.5 h-1.5 rounded-full" :class="getLogDotColor(log.action)"></div>
-                  </div>
-                  <div class="bg-gray-50/80 rounded-2xl p-4 border border-gray-100 hover:bg-white hover:shadow-md transition-all duration-300">
-                    <div class="flex items-center justify-between mb-2">
-                      <span class="font-bold text-sm text-gray-900">{{ log.action || '系统操作' }}</span>
-                      <span class="text-[10px] text-gray-400 font-mono">{{ log.created_at ? new Date(log.created_at).toLocaleString('zh-CN', { hour12: false }) : '--' }}</span>
+            <div v-if="!itemData.logs || itemData.logs.length === 0" class="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[11px] text-slate-400">
+              暂无流转历史
+            </div>
+            <ol v-else class="relative space-y-4">
+              <li v-for="(log, idx) in itemData.logs" :key="log.id" class="group relative flex gap-6 pl-0">
+                <div
+                  v-if="Number(idx) < itemData.logs.length - 1"
+                  class="absolute left-4 top-[34px] bottom-0 w-[1.5px] bg-slate-100"
+                ></div>
+                <div class="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white mt-[1.5px]">
+                  <div class="w-1.5 h-1.5 rounded-full" :class="getLogDotColor(log.action)"></div>
+                </div>
+                <div class="flex-grow pb-4 pt-1 px-5 rounded-xl border border-slate-100/50 bg-white/30 hover:bg-white hover:shadow-sm transition-all duration-300 group-hover:translate-x-1">
+                  <div class="flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-3 py-0.5">
+                      <span class="text-sm font-bold text-slate-800">{{ log.action || '系统操作' }}</span>
                     </div>
-                    <div class="text-xs text-gray-500 font-medium flex gap-4">
-                       <span>👤 {{ log.user?.real_name || 'System' }}</span>
-                       <span v-if="log.quantity" class="text-blue-600 font-bold">数量变动: {{ formatNumber(log.quantity) }}</span>
+                    <div class="flex items-center gap-4 text-xs whitespace-nowrap">
+                      <div class="flex items-center gap-2 font-bold text-slate-700">
+                        <span class="text-[10px] text-slate-400 uppercase tracking-tighter">操作人:</span>
+                        <span>{{ log.user?.real_name || 'System' }}</span>
+                      </div>
+                      <span class="font-bold text-slate-500 opacity-90">{{ log.created_at ? new Date(log.created_at).toLocaleString('zh-CN', { hour12: false }) : '--' }}</span>
                     </div>
-                    <p v-if="log.remarks" class="text-[11px] text-gray-400 mt-3 p-3 bg-white/60 rounded-xl border border-dashed border-gray-200 italic">"{{ log.remarks }}"</p>
                   </div>
-               </div>
-           </div>
+                  <div class="mt-1 text-[13px] leading-relaxed text-slate-500">
+                    <span v-if="log.quantity">数量变动：{{ formatNumber(log.quantity) }}</span>
+                    <span v-else>流程节点记录</span>
+                  </div>
+                  <div v-if="log.remarks" class="mt-2 rounded-lg border border-dashed border-slate-200 bg-white/80 px-3 py-2 text-[11px] text-slate-500 italic">
+                    {{ log.remarks }}
+                  </div>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <div v-if="itemData.reagent_request" class="apple-card p-5 bg-slate-50/40 border-slate-200/30 shadow-none">
+            <h4 class="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">原始申购记录溯源</h4>
+            <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-white/80 px-3 py-3">
+              <div>
+                <p class="text-sm font-bold text-slate-800">申购人：{{ itemData.reagent_request?.requestor?.real_name || 'System' }}</p>
+                <p class="text-xs text-slate-500 mt-1">{{ itemData.reagent_request?.remarks || '日常实验储备需求' }}</p>
+              </div>
+              <ChevronRight class="h-4 w-4 text-slate-300" />
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-4 flex flex-col gap-4 text-nowrap">
+          <div class="apple-card p-5 bg-slate-50/40 border-slate-200/30 shadow-none">
+            <h4 class="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">身份标识</h4>
+            <div class="rounded-xl border border-slate-200 bg-white p-4 flex flex-col items-center">
+              <QrCode class="w-12 h-12 text-slate-800" stroke-width="1.5" />
+              <span class="text-[10px] text-slate-400 font-mono mt-3 tracking-widest font-bold">{{ itemUuid?.substring(0,8).toUpperCase() }}</span>
+              <span class="text-[9px] text-slate-400 mt-1">扫码防伪溯源</span>
+            </div>
+          </div>
+
+          <div class="apple-card p-5 bg-slate-50/40 border-slate-200/30 shadow-none">
+            <h4 class="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">库位与有效期</h4>
+            <div class="space-y-3 text-sm">
+              <div class="flex items-center justify-between"><span class="text-slate-500">实物位置</span><span class="font-bold text-slate-800">{{ itemData.location || '--' }}</span></div>
+              <div class="flex items-center justify-between"><span class="text-slate-500">归属柜位</span><span class="font-bold text-slate-800">{{ itemData.cabinet?.name || '公用区' }}</span></div>
+              <div class="flex items-center justify-between"><span class="text-slate-500">存储要求</span><span class="font-bold text-slate-800 text-xs">{{ itemData.reagent_catalog?.storage_condition || '常温避光' }}</span></div>
+              <div class="flex items-center justify-between"><span class="text-slate-500">失效日期</span><span :class="itemData.expiry_date && new Date(itemData.expiry_date) < new Date() ? 'text-red-600 font-bold' : 'font-bold text-slate-800'">{{ itemData.expiry_date ? new Date(itemData.expiry_date).toLocaleDateString() : '长期有效' }}</span></div>
+            </div>
+          </div>
+
+          <div class="apple-card p-5 bg-slate-50/60 border-slate-200/20 shadow-none">
+            <h4 class="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">状态摘要</h4>
+            <div class="space-y-2 text-[11px] text-slate-500">
+              <p class="flex items-center gap-2"><MapPin class="h-3.5 w-3.5 text-cyan-500" /> 当前位置已记录，可扫码复核。</p>
+              <p class="flex items-center gap-2"><CalendarClock class="h-3.5 w-3.5 text-amber-500" /> 有效期与存储条件已关联品目档案。</p>
+              <p v-if="itemData.reagent_request" class="flex items-center gap-2"><ShoppingCart class="h-3.5 w-3.5 text-blue-500" /> 可追溯至原始申购单。</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
     <template #footer>
-       <div v-if="itemData" class="flex flex-wrap gap-3 w-full items-center">
-          <Button variant="secondary" @click="emit('close')">关闭详情</Button>
-          
-          <div v-if="itemData.status === '已耗尽'" class="flex-1 flex items-center justify-center text-xs font-bold text-gray-400 uppercase tracking-widest bg-gray-50 rounded-xl">
-             Lifecycle Terminated
-          </div>
-          
-          <template v-else>
-            <Button v-if="itemData.status === '已到货'" class="flex-1" variant="primary" @click="handleAction('receive')" :disabled="actionProcessing">
-              <Package class="w-4 h-4 mr-2" /> 确认领回入库
-            </Button>
+      <div v-if="itemData" class="flex flex-wrap gap-3 w-full items-center">
+        <Button variant="secondary" @click="emit('close')">关闭详情</Button>
 
-            <template v-else-if="itemData.status === '在库'">
-              <div class="flex-1 min-w-[260px] rounded-xl border border-gray-200 bg-gray-50 p-2.5">
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
-                  <div class="sm:col-span-1">
-                    <label class="block text-[10px] text-gray-500 mb-1">本次消耗量</label>
-                    <div class="relative">
-                      <input
-                        v-model.number="consumeVolume"
-                        type="number"
-                        min="0"
-                        :max="itemData.remaining_volume"
-                        step="0.1"
-                        class="w-full h-9 rounded-lg border border-gray-200 bg-white px-2 pr-9 text-sm"
-                      />
-                      <span class="absolute right-2 top-2 text-xs text-gray-400">{{ consumeUnit }}</span>
-                    </div>
-                  </div>
-                  <div class="sm:col-span-2">
-                    <label class="block text-[10px] text-gray-500 mb-1">用途/备注（选填）</label>
+        <div v-if="itemData.status === '已耗尽'" class="flex-1 flex items-center justify-center text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-50 rounded-xl">
+          已完成全生命周期
+        </div>
+
+        <template v-else>
+          <Button v-if="itemData.status === '已到货'" class="flex-1" variant="primary" @click="handleAction('receive')" :disabled="actionProcessing">
+            <Package class="w-4 h-4 mr-2" /> 确认领回入库
+          </Button>
+
+          <template v-else-if="itemData.status === '在库'">
+            <div class="flex-1 min-w-[260px] rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
+                <div class="sm:col-span-1">
+                  <label class="block text-[10px] text-slate-500 mb-1">本次消耗量</label>
+                  <div class="relative">
                     <input
-                      v-model="consumeRemarks"
-                      type="text"
-                      class="w-full h-9 rounded-lg border border-gray-200 bg-white px-2 text-sm"
-                      placeholder="如：滴定实验A组"
+                      v-model.number="consumeVolume"
+                      type="number"
+                      min="0"
+                      :max="itemData.remaining_volume"
+                      step="0.1"
+                      class="w-full h-9 rounded-lg border border-slate-200 bg-white px-2 pr-9 text-sm"
                     />
+                    <span class="absolute right-2 top-2 text-xs text-slate-400">{{ consumeUnit }}</span>
                   </div>
                 </div>
+                <div class="sm:col-span-2">
+                  <label class="block text-[10px] text-slate-500 mb-1">用途/备注（选填）</label>
+                  <input
+                    v-model="consumeRemarks"
+                    type="text"
+                    class="w-full h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm"
+                    placeholder="如：滴定实验A组"
+                  />
+                </div>
               </div>
-              <Button class="flex-1" variant="outline" @click="handleAction('dispose')" :disabled="actionProcessing">
-                <AlertTriangle class="w-4 h-4 mr-2 text-orange-500" /> 空瓶核销
-              </Button>
-              <Button class="flex-1 shadow-blue-100 shadow-lg" variant="primary" @click="handleAction('consume')" :disabled="actionProcessing || consumeVolume <= 0">
-                <TestTube2 class="w-4 h-4 mr-2" /> 确认消耗
-              </Button>
-            </template>
+            </div>
+            <Button class="flex-1" variant="outline" @click="handleAction('dispose')" :disabled="actionProcessing">
+              <AlertTriangle class="w-4 h-4 mr-2 text-orange-500" /> 空瓶核销
+            </Button>
+            <Button class="flex-1 shadow-blue-100 shadow-lg" variant="primary" @click="handleAction('consume')" :disabled="actionProcessing || consumeVolume <= 0">
+              <TestTube2 class="w-4 h-4 mr-2" /> 确认消耗
+            </Button>
           </template>
-       </div>
+        </template>
+      </div>
     </template>
   </Dialog>
 </template>

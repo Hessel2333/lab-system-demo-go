@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue'
 import { Upload, CheckCircle2, AlertCircle, Loader2 } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
-import Card from '@/components/ui/Card.vue'
+import TableSection from '@/components/ui/TableSection.vue'
 import axios from 'axios'
 import * as XLSX from 'xlsx'
 
@@ -383,31 +383,26 @@ const createEmptyBatch = () => {
 </script>
 
 <template>
-  <Card>
-    <div class="p-6 space-y-5">
-      <!-- Header -->
-      <div class="flex items-center justify-between">
-        <div>
-          <h2 class="text-lg font-semibold text-gray-900">采购明细导入</h2>
-          <p class="text-xs text-gray-500 mt-0.5">上传易派客等外部平台的采购明细，自动匹配申购需求并触发到货赋码</p>
-        </div>
-        <div class="flex items-center gap-2">
-          <span
-            :class="[
-              'inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium border',
-              step === 'upload' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-              step === 'match' ? 'bg-amber-100 text-amber-700 border-amber-200' :
-              'bg-green-100 text-green-700 border-green-200'
-            ]"
-          >
-            {{ step === 'upload' ? '待上传' : step === 'match' ? '待确认' : '已完成' }}
-          </span>
-        </div>
-      </div>
+  <TableSection
+    title="采购明细导入"
+    description="上传易派客等外部平台的采购明细，自动匹配申购需求并触发到货赋码"
+  >
+    <template #actions>
+      <span
+        :class="[
+          'inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium border',
+          step === 'upload' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+          step === 'match' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+          'bg-green-100 text-green-700 border-green-200'
+        ]"
+      >
+        {{ step === 'upload' ? '待上传' : step === 'match' ? '待确认' : '已完成' }}
+      </span>
+    </template>
 
-      <!-- Step 1: 上传 -->
-      <div v-if="step === 'upload'" class="space-y-4">
-        <div class="flex items-center gap-3">
+    <template #toolbar>
+      <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
+        <div v-if="step === 'upload'" class="flex w-full flex-wrap items-center gap-3">
           <label class="text-sm font-medium text-gray-700">所属周期</label>
           <input
             v-model="period"
@@ -418,6 +413,33 @@ const createEmptyBatch = () => {
           <span class="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md border border-blue-100">上传 Excel 会自动提取</span>
         </div>
 
+        <div v-else-if="step === 'match'" class="apple-segmented">
+          <button
+            v-for="tab in ['待处理', '已匹配', '已忽略', '全部']"
+            :key="tab"
+            @click="activeTab = tab as any"
+            :class="['apple-segmented-btn', activeTab === tab ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']"
+          >
+            {{ tab }}
+            <span v-if="tab === '待处理' && matchStats.unmatched > 0" class="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">
+              {{ matchStats.unmatched }}
+            </span>
+          </button>
+        </div>
+
+        <div v-if="step === 'match'" class="sm:ml-auto">
+          <button
+            class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            @click="showAdvancedTools = !showAdvancedTools"
+          >
+            高级处理 {{ showAdvancedTools ? '收起' : '展开' }}
+          </button>
+        </div>
+      </div>
+    </template>
+
+    <!-- Step 1: 上传 -->
+    <div v-if="step === 'upload'" class="space-y-4">
         <!-- 拖拽上传区 -->
         <div
           @dragover.prevent="dragActive = true"
@@ -447,82 +469,57 @@ const createEmptyBatch = () => {
             没有 Excel？手动创建空批次并逐条录入
           </button>
         </div>
+    </div>
+
+    <!-- Step 2: 明细确认与匹配 -->
+    <div v-if="step === 'match'" class="space-y-4">
+      <div class="rounded-lg border bg-slate-50/80 px-4 py-3">
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+          <span class="font-medium text-slate-700">批次 #{{ batchId }} · 周期 {{ period || '未设置' }}</span>
+          <span class="text-slate-600">总行数 {{ matchStats.total }}</span>
+          <span class="font-medium text-emerald-600">新增 {{ importedCreatedCount }}</span>
+          <span class="font-medium text-amber-600">重复跳过 {{ repeatedTotal }}</span>
+          <span v-if="repeatedTotal > 0" class="text-slate-500">系统 {{ duplicateInSystem }} / 文件内 {{ duplicateInFile }}</span>
+          <span class="font-medium text-red-600">待处理 {{ matchStats.unmatched }}</span>
+          <span class="ml-auto text-slate-500">可确认 {{ matchStats.matched }}</span>
+        </div>
       </div>
 
-      <!-- Step 2: 明细确认与匹配 -->
-      <div v-if="step === 'match'" class="space-y-4">
-        <!-- 统计条与Tabs -->
-        <div class="flex flex-col gap-3 mb-2">
-          <div class="rounded-lg border bg-slate-50/80 px-4 py-3">
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-              <span class="font-medium text-slate-700">批次 #{{ batchId }} · 周期 {{ period || '未设置' }}</span>
-              <span class="text-slate-600">总行数 {{ matchStats.total }}</span>
-              <span class="font-medium text-emerald-600">新增 {{ importedCreatedCount }}</span>
-              <span class="font-medium text-amber-600">重复跳过 {{ repeatedTotal }}</span>
-              <span v-if="repeatedTotal > 0" class="text-slate-500">系统 {{ duplicateInSystem }} / 文件内 {{ duplicateInFile }}</span>
-              <span class="font-medium text-red-600">待处理 {{ matchStats.unmatched }}</span>
-              <span class="ml-auto text-slate-500">可确认 {{ matchStats.matched }}</span>
-            </div>
+      <div v-if="showAdvancedTools" class="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+        <div class="flex flex-wrap items-end gap-2">
+          <div class="flex-1 min-w-52">
+            <label class="mb-0.5 block text-[10px] text-gray-500">试剂名称</label>
+            <input v-model="newItemName" type="text" placeholder="如：丙酮" class="w-full px-2 py-1 text-xs border rounded" />
           </div>
-
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="apple-segmented">
-              <button
-                v-for="tab in ['待处理', '已匹配', '已忽略', '全部']"
-                :key="tab"
-                @click="activeTab = tab as any"
-                :class="['apple-segmented-btn', activeTab === tab ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']"
-              >
-                {{ tab }}
-                <span v-if="tab === '待处理' && matchStats.unmatched > 0" class="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">
-                  {{ matchStats.unmatched }}
-                </span>
-              </button>
-            </div>
-            <button
-              class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-              @click="showAdvancedTools = !showAdvancedTools"
-            >
-              高级处理 {{ showAdvancedTools ? '收起' : '展开' }}
-            </button>
+          <div class="w-28">
+            <label class="mb-0.5 block text-[10px] text-gray-500">CAS号</label>
+            <input v-model="newItemCas" type="text" placeholder="67-64-1" class="w-full px-2 py-1 text-xs border rounded" />
           </div>
+          <div class="w-20">
+            <label class="mb-0.5 block text-[10px] text-gray-500">数量</label>
+            <input v-model.number="newItemQty" type="number" min="1" class="w-full px-2 py-1 text-xs border rounded" />
+          </div>
+          <Button size="sm" variant="primary" class="text-xs shrink-0" @click="addManualItem">
+            追加明细
+          </Button>
         </div>
-
-        <div v-if="showAdvancedTools" class="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-          <div class="flex flex-wrap items-end gap-2">
-            <div class="flex-1 min-w-52">
-              <label class="mb-0.5 block text-[10px] text-gray-500">试剂名称</label>
-              <input v-model="newItemName" type="text" placeholder="如：丙酮" class="w-full px-2 py-1 text-xs border rounded" />
-            </div>
-            <div class="w-28">
-              <label class="mb-0.5 block text-[10px] text-gray-500">CAS号</label>
-              <input v-model="newItemCas" type="text" placeholder="67-64-1" class="w-full px-2 py-1 text-xs border rounded" />
-            </div>
-            <div class="w-20">
-              <label class="mb-0.5 block text-[10px] text-gray-500">数量</label>
-              <input v-model.number="newItemQty" type="number" min="1" class="w-full px-2 py-1 text-xs border rounded" />
-            </div>
-            <Button size="sm" variant="primary" class="text-xs shrink-0" @click="addManualItem">
-              追加明细
-            </Button>
-          </div>
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <p class="text-[11px] text-slate-500">高级处理用于手动补录明细，或批量忽略未匹配杂项。</p>
-            <Button
-              size="sm"
-              variant="outline"
-              class="h-7 text-xs text-gray-600 font-medium border-red-200 hover:bg-red-50 hover:text-red-600 transition"
-              :disabled="matchStats.unmatched === 0"
-              @click="ignoreAllUnmatched"
-            >
-              一键忽略待处理
-            </Button>
-          </div>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <p class="text-[11px] text-slate-500">高级处理用于手动补录明细，或批量忽略未匹配杂项。</p>
+          <Button
+            size="sm"
+            variant="outline"
+            class="h-7 text-xs text-gray-600 font-medium border-red-200 hover:bg-red-50 hover:text-red-600 transition"
+            :disabled="matchStats.unmatched === 0"
+            @click="ignoreAllUnmatched"
+          >
+            一键忽略待处理
+          </Button>
         </div>
+      </div>
 
-        <!-- 明细表格 -->
-        <div class="apple-table-wrap max-h-96 overflow-y-auto">
-          <table class="w-full text-xs">
+      <!-- 明细表格 -->
+      <div class="apple-table-wrap max-h-96 overflow-y-auto">
+        <table class="w-full text-xs">
             <thead class="bg-gray-50 sticky top-0">
               <tr>
                 <th class="px-3 py-2 text-left text-gray-600 font-medium">商品名称</th>
@@ -585,37 +582,36 @@ const createEmptyBatch = () => {
                 </td>
               </tr>
             </tbody>
-          </table>
-        </div>
-
-        <!-- 操作按钮 -->
-        <div class="flex justify-end gap-2 pt-2">
-          <Button size="sm" variant="secondary" @click="resetAll">
-            取消
-          </Button>
-          <Button
-            size="sm"
-            class="bg-emerald-600 hover:bg-emerald-700 text-white"
-            :disabled="isConfirming || matchStats.matched === 0"
-            @click="confirmBatch"
-          >
-            <Loader2 v-if="isConfirming" class="w-3.5 h-3.5 animate-spin mr-1" />
-            <span v-if="batchStatus !== '待确认'">已确认，去到货台账</span>
-            <span v-else-if="matchStats.unmatched > 0">仅确认已匹配 {{ matchStats.matched }} 项</span>
-            <span v-else>确认入库 ({{ matchStats.matched }}项)</span>
-          </Button>
-        </div>
+        </table>
       </div>
 
-      <!-- Step 3: 完成 -->
-      <div v-if="step === 'done'" class="text-center py-10 space-y-4">
-        <CheckCircle2 class="w-16 h-16 mx-auto text-green-500" />
-        <h3 class="text-lg font-semibold text-gray-900">批次导入完成！</h3>
-        <p class="text-sm text-gray-600">试剂已进入暂存区，可在到货台账继续点验、打印与入库。</p>
-        <Button size="sm" variant="primary" @click="resetAll">
-          导入新批次
+      <!-- 操作按钮 -->
+      <div class="flex justify-end gap-2 pt-2">
+        <Button size="sm" variant="secondary" @click="resetAll">
+          取消
+        </Button>
+        <Button
+          size="sm"
+          class="bg-emerald-600 hover:bg-emerald-700 text-white"
+          :disabled="isConfirming || matchStats.matched === 0"
+          @click="confirmBatch"
+        >
+          <Loader2 v-if="isConfirming" class="w-3.5 h-3.5 animate-spin mr-1" />
+          <span v-if="batchStatus !== '待确认'">已确认，去到货台账</span>
+          <span v-else-if="matchStats.unmatched > 0">仅确认已匹配 {{ matchStats.matched }} 项</span>
+          <span v-else>确认入库 ({{ matchStats.matched }}项)</span>
         </Button>
       </div>
+    </div>
+
+    <!-- Step 3: 完成 -->
+    <div v-if="step === 'done'" class="text-center py-10 space-y-4">
+      <CheckCircle2 class="w-16 h-16 mx-auto text-green-500" />
+      <h3 class="text-lg font-semibold text-gray-900">批次导入完成！</h3>
+      <p class="text-sm text-gray-600">试剂已进入暂存区，可在到货台账继续点验、打印与入库。</p>
+      <Button size="sm" variant="primary" @click="resetAll">
+        导入新批次
+      </Button>
     </div>
 
     <!-- Toast -->
@@ -636,5 +632,5 @@ const createEmptyBatch = () => {
         </div>
       </div>
     </Transition>
-  </Card>
+  </TableSection>
 </template>

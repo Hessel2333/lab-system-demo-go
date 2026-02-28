@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import Dialog from '@/components/ui/Dialog.vue'
-import { Plus } from 'lucide-vue-next'
+import TableSection from '@/components/ui/TableSection.vue'
+import Button from '@/components/ui/Button.vue'
+import Input from '@/components/ui/Input.vue'
+import { Plus, Search, Loader2 } from 'lucide-vue-next'
 
 interface Supplier {
     ID: number
@@ -17,6 +20,9 @@ interface Supplier {
 
 const suppliers = ref<Supplier[]>([])
 const loading = ref(false)
+const searchQuery = ref('')
+const typeFilter = ref('全部')
+const statusFilter = ref('全部')
 
 const isDialogOpen = ref(false)
 const currentSupplier = ref<Partial<Supplier>>({})
@@ -79,23 +85,78 @@ const handleSave = async () => {
         loading.value = false
     }
 }
+
+const typeLabelMap: Record<string, string> = {
+    instrument: '仪器设备',
+    reagent: '试剂耗材',
+    general: '综合服务'
+}
+
+const filteredSuppliers = computed(() => {
+    let result = suppliers.value
+    if (typeFilter.value !== '全部') {
+        result = result.filter((sup) => (typeLabelMap[sup.type] || sup.type) === typeFilter.value)
+    }
+    if (statusFilter.value !== '全部') {
+        result = result.filter((sup) => (sup.status === 'active' ? '合作中' : '已拉黑') === statusFilter.value)
+    }
+    const q = searchQuery.value.trim().toLowerCase()
+    if (q) {
+        result = result.filter((sup) =>
+            sup.name?.toLowerCase().includes(q) ||
+            sup.contact_person?.toLowerCase().includes(q) ||
+            sup.phone?.toLowerCase().includes(q)
+        )
+    }
+    return result
+})
 </script>
 
 <template>
-    <div class="h-full flex flex-col bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        <!-- Header -->
-        <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-white">
-            <div>
-                <h1 class="text-xl font-bold text-gray-900">供应商管理</h1>
-                <p class="text-sm text-gray-500 mt-1">管理仪器、试剂及耗材的各类供应商库</p>
-            </div>
-            <button @click="openAddDialog" class="bg-black text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors shadow-sm flex items-center gap-2">
-                <Plus class="w-4 h-4" /> 新增供应商
-            </button>
-        </div>
+    <TableSection title="供应商管理" description="管理仪器、试剂及耗材的各类供应商库">
+        <template #actions>
+            <Button variant="primary" size="sm" @click="openAddDialog">
+                <Plus class="w-4 h-4 mr-1" />
+                新增供应商
+            </Button>
+        </template>
 
-        <!-- Table -->
-        <div class="flex-1 overflow-auto">
+        <template #toolbar>
+            <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
+                <div class="relative w-full sm:w-80">
+                    <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+                    <Input v-model="searchQuery" class="pl-9" placeholder="搜索供应商、联系人或电话..." />
+                </div>
+                <div class="apple-segmented w-fit sm:ml-auto">
+                    <button
+                        v-for="type in ['全部', '仪器设备', '试剂耗材', '综合服务']"
+                        :key="type"
+                        @click="typeFilter = type"
+                        :class="['apple-segmented-btn', typeFilter === type ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']"
+                    >
+                        {{ type }}
+                    </button>
+                </div>
+                <div class="apple-segmented w-fit">
+                    <button
+                        v-for="status in ['全部', '合作中', '已拉黑']"
+                        :key="status"
+                        @click="statusFilter = status"
+                        :class="['apple-segmented-btn', statusFilter === status ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']"
+                    >
+                        {{ status }}
+                    </button>
+                </div>
+            </div>
+        </template>
+
+        <div v-if="loading" class="flex justify-center py-10">
+            <Loader2 class="h-8 w-8 animate-spin text-gray-400" />
+        </div>
+        <div v-else-if="filteredSuppliers.length === 0" class="apple-table-empty">
+            暂无符合条件的供应商记录。
+        </div>
+        <div v-else class="apple-table-wrap">
             <table class="w-full text-left text-sm">
                 <thead class="bg-gray-50 text-gray-500 font-medium border-b border-gray-100 sticky top-0 z-10">
                     <tr>
@@ -108,11 +169,11 @@ const handleSave = async () => {
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
-                    <tr v-for="sup in suppliers" :key="sup.ID" class="hover:bg-gray-50/50 transition-colors">
+                    <tr v-for="sup in filteredSuppliers" :key="sup.ID" class="hover:bg-gray-50/50 transition-colors">
                         <td class="px-6 py-4 font-medium text-gray-900">{{ sup.name }}</td>
                         <td class="px-6 py-4">
                             <span class="px-2 py-1 rounded text-xs bg-gray-100 text-gray-600 border border-gray-200">
-                                {{ { instrument: '仪器设备', reagent: '试剂耗材', active: '综合' }[sup.type] || sup.type }}
+                                {{ typeLabelMap[sup.type] || sup.type }}
                             </span>
                         </td>
                         <td class="px-6 py-4 text-gray-600">
@@ -129,8 +190,10 @@ const handleSave = async () => {
                             </div>
                         </td>
                         <td class="px-6 py-4">
-                            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium"
-                                :class="sup.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'">
+                            <span
+                                class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium"
+                                :class="sup.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'"
+                            >
                                 <span class="w-1.5 h-1.5 rounded-full" :class="sup.status === 'active' ? 'bg-green-500' : 'bg-red-500'"></span>
                                 {{ sup.status === 'active' ? '合作中' : '已拉黑' }}
                             </span>
@@ -142,7 +205,7 @@ const handleSave = async () => {
                 </tbody>
             </table>
         </div>
-    </div>
+    </TableSection>
 
     <Dialog :open="isDialogOpen" @close="isDialogOpen = false">
         <div class="p-6">

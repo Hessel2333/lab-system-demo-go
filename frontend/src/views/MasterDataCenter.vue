@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { defineAsyncComponent, ref } from 'vue'
-import Card from '@/components/ui/Card.vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
+import TableSection from '@/components/ui/TableSection.vue'
+import Input from '@/components/ui/Input.vue'
+import { Search } from 'lucide-vue-next'
 
 const ReagentCatalogManager = defineAsyncComponent(() => import('@/components/reagents/ReagentCatalogManager.vue'))
 
@@ -14,6 +16,8 @@ const tabs: Array<{ id: MasterTab; label: string }> = [
   { id: 'gene', label: '基因库条目' },
   { id: 'bottle', label: '试剂瓶模板' },
 ]
+
+const activeTabLabel = computed(() => tabs.find((tab) => tab.id === activeTab.value)?.label || '主数据')
 </script>
 
 <template>
@@ -41,12 +45,16 @@ const tabs: Array<{ id: MasterTab; label: string }> = [
       <ReagentCatalogManager />
     </div>
 
-    <Card v-else>
-      <div class="p-10 text-center">
-        <h2 class="text-base font-semibold text-gray-900">模块建设中</h2>
-        <p class="mt-2 text-sm text-gray-500">该主数据子模块将按统一字段规范与权限策略逐步开放。</p>
-      </div>
-    </Card>
+    <TableSection v-else :title="`${activeTabLabel}台账`" description="主数据台账骨架已就绪，后续将按同一字段规范逐步开放。">
+      <template #toolbar>
+        <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
+          <div class="relative w-full sm:w-80">
+            <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+            <Input disabled class="pl-9" placeholder="搜索功能建设中" />
+          </div>
+        </div>
+      </template>
+      <div class="apple-table-empty">该主数据子模块建设中，后续将提供统一台账与新增流程。</div>
+    </TableSection>
   </div>
 </template>
-

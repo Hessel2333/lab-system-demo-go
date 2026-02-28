@@ -118,9 +118,26 @@
 - 错误提示优先透传后端原因，不使用泛化“操作失败”
 - 行内按钮数量建议不超过 2 个；更多动作放详情弹窗
 
+## 8. 流转弹窗规范（Flow Detail Dialog）
+
+流程类台账（申购/到货/领用）应统一使用 `FlowDetailDialog` 风格，结构固定为：
+
+1. 摘要区：标题、副标题、当前状态标签、核心元信息  
+2. 时间轴区：节点状态 + 节点说明 + 处理人 + 处理时间  
+3. 动作区：仅展示当前角色可执行动作  
+4. 说明区：驳回原因、超时信息、双签补充说明等
+
+显示口径：
+
+- 时间节点：默认显示，禁止只显示状态标签不显示节点。
+- 审批人/处理人：有数据则显示（如团队长、钥匙持有人）；无数据则不强行占位。
+- 时间字段：有明确时间才显示（如 `leader_approved_at`、`key_holder_a_confirmed_at`）。
+- 信息粒度：弹窗只放核心流程字段（单号、申请人、数量/用途、关键时间、驳回原因），避免堆叠业务无关字段。
+- 无权限动作：右侧动作区不渲染按钮列表，仅显示“当前角色仅可查看流程状态”。
+
 ---
 
-## 8. 当前已落地（2026-02-27）
+## 9. 当前已落地（2026-02-27）
 
 - `ReagentRequestList.vue`：已接入统一骨架
 - `ReagentCatalogManager.vue`：已接入统一骨架
@@ -128,27 +145,27 @@
 - `ReagentUnifiedInventory.vue`：已接入统一骨架
 - `ReagentDispensePanel.vue`：已接入统一骨架（研发/采购/负责人同骨架）
 - `ResearcherArrivalList.vue`：已接入统一骨架
+- `ProcurementBatchImport.vue`：已接入统一骨架（上传/匹配/完成三步保持同一容器）
+- `UserManagement.vue`：已接入统一骨架（含搜索与角色筛选工具条）
+- `SupplierManagement.vue`：已接入统一骨架（含搜索、类型与状态筛选工具条）
+- `MasterDataCenter.vue`：非试剂子模块已接入统一台账占位骨架
 - `TableSection.vue`：已创建并可复用
 - `index.css`：已新增统一表格区域样式
 
 ---
 
-## 9. 后续迁移优先级
+## 10. 后续迁移优先级
 
-P0：
-
-1. `ProcurementBatchImport.vue`
-2. `UserManagement.vue`（表格区）
-3. `SupplierManagement.vue`（表格区）
+P0：已完成
 
 P1：
 
-1. `MasterDataCenter` 下扩展主数据表格
+1. `MasterDataCenter` 各子模块补齐真实字段与增删改流程
 2. 其余建设中页的首版表格骨架
 
 ---
 
-## 10. PR 验收清单（UI）
+## 11. PR 验收清单（UI）
 
 每个涉及台账/表格的 PR，必须满足：
 

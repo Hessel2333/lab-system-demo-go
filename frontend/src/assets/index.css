@@ -206,6 +206,76 @@
     .apple-toast-error {
         @apply border-red-200 bg-red-50 text-red-800;
     }
+
+    /* --- 新增流转单优化样式 --- */
+    .glass-morphism {
+        @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-xl;
+    }
+
+    .flow-ticket-header {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .flow-ticket-header::after {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -10%;
+        width: 300px;
+        height: 300px;
+        background: radial-gradient(circle, rgba(59, 130, 246, 0.05) 0%, transparent 70%);
+        pointer-events: none;
+    }
+
+    /* 脉冲光晕动画 */
+    @keyframes pulse-glow {
+        0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+        70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+    }
+
+    .animate-pulse-glow {
+        animation: pulse-glow 2s infinite;
+    }
+
+    /* 渐变文本 */
+    .text-gradient-blue {
+        @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600;
+    }
+
+    /* 步骤条渐变背景线 - 简约化 */
+    .timeline-line-gradient {
+        background: #e2e8f0;
+    }
+
+    /* --- 苹果风格极简优化 --- */
+    .apple-card {
+        @apply bg-white border border-slate-200/60 shadow-[0_2px_8px_rgba(0,0,0,0.04)] rounded-2xl transition-all duration-300;
+    }
+
+    .apple-card-hover {
+        @apply hover:shadow-[0_8px_24px_rgba(148,163,184,0.12)] hover:-translate-y-0.5;
+    }
+
+    .apple-glass {
+        @apply bg-white/80 backdrop-blur-md border border-white/40 shadow-sm rounded-2xl;
+    }
+
+    /* 苹果微光脉冲 (The Pulse) */
+    @keyframes pulse-soft {
+      0%, 100% {
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+      }
+      50% {
+        box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.08);
+      }
+    }
+
+    .animate-pulse-soft {
+      animation: pulse-soft 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {

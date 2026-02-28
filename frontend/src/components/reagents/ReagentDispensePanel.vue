@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
-import { CheckCircle2, XCircle, Clock, Lock, Loader2, ShieldCheck, Send } from 'lucide-vue-next'
+import { Loader2, Send, XCircle } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
 import TableSection from '@/components/ui/TableSection.vue'
+import FlowStatusPill from '@/components/workflow/FlowStatusPill.vue'
+import FlowTimeline from '@/components/workflow/FlowTimeline.vue'
+import FlowActionPanel from '@/components/workflow/FlowActionPanel.vue'
+import FlowDetailDialog from '@/components/workflow/FlowDetailDialog.vue'
 import axios from 'axios'
 import { formatAmount } from '@/lib/quantity'
 
@@ -24,6 +28,25 @@ interface ControlledItem {
 }
 
 type ResearchTab = 'catalog' | 'bpm'
+type ActionVariant = 'primary' | 'secondary' | 'outline' | 'destructive'
+type FlowStepState = 'completed' | 'current' | 'pending' | 'rejected' | 'hidden'
+
+interface FlowActionItem {
+  key: string
+  label: string
+  variant?: ActionVariant
+  disabled?: boolean
+  loading?: boolean
+}
+
+interface FlowStepItem {
+  key: string
+  label: string
+  state: FlowStepState
+  description?: string
+  operator?: string
+  time?: string
+}
 
 const activeResearchTab = ref<ResearchTab>('catalog')
 const requests = ref<any[]>([])
@@ -32,6 +55,8 @@ const controlledItems = ref<ControlledItem[]>([])
 const loadingControlledItems = ref(false)
 const searchKeyword = ref('')
 const latestRequestId = ref<number | null>(null)
+const flowDetailOpen = ref(false)
+const flowDetailRequestId = ref<number | null>(null)
 
 const quickApply = ref({
   reagentItemId: '',
@@ -157,7 +182,7 @@ const submitLeaderApproval = async (approved: boolean) => {
     })
     toast(approved ? '已批准领用申请' : '已驳回领用申请')
     approveDialogOpen.value = false
-    fetchRequests()
+    await fetchRequests()
   } catch {
     toast('操作失败', 'error')
   } finally {
@@ -175,7 +200,7 @@ const submitKeyHolderConfirm = async (reqId: number, confirmed: boolean, rejectM
       reject_msg: rejectMsg,
     })
     toast(confirmed ? '已确认开锁' : '已驳回取用')
-    fetchRequests()
+    await fetchRequests()
   } catch {
     toast('操作失败', 'error')
   } finally {
@@ -189,27 +214,22 @@ const canCurrentUserKeyConfirm = (req: any) => {
   return req.key_holder_a_id === uid || req.key_holder_b_id === uid
 }
 
-const getStatusConfig = (status: string) => {
-  const map: Record<string, { color: string, label: string, icon: any }> = {
-    '待审批': { color: 'bg-orange-100 text-orange-800 border-orange-200', label: '待审批', icon: Clock },
-    '已通过': { color: 'bg-green-100 text-green-800 border-green-200', label: '已通过', icon: CheckCircle2 },
-    '已驳回': { color: 'bg-red-100 text-red-800 border-red-200', label: '已驳回', icon: XCircle },
-    '待双签': { color: 'bg-purple-100 text-purple-800 border-purple-200', label: '待双签', icon: Lock },
-    '已完成': { color: 'bg-emerald-100 text-emerald-800 border-emerald-200', label: '已完成', icon: ShieldCheck },
-  }
-  return map[status] || { color: 'bg-gray-100 text-gray-800 border-gray-200', label: status, icon: Clock }
-}
-
 const formatTime = (t: string) => {
   if (!t) return '-'
   return new Date(t).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-const getBpmSteps = (req: any) => {
+const getBpmSteps = (req: any): FlowStepItem[] => {
   const status = req.status
   const controlled = !!req.reagent_item?.reagent_catalog?.is_controlled
+  const latestDualTime = req.key_holder_b_confirmed_at || req.key_holder_a_confirmed_at || ''
+  const leaderOperator = req.leader?.real_name || (req.leader_id ? `用户#${req.leader_id}` : '')
+  const dualOperator = [
+    req.key_holder_a_confirmed_at ? (req.key_holder_a?.real_name || '钥匙A') : '',
+    req.key_holder_b_confirmed_at ? (req.key_holder_b?.real_name || '钥匙B') : '',
+  ].filter(Boolean).join(' / ')
 
-  const stepState = (key: 'submit' | 'leader' | 'dual' | 'done') => {
+  const stepState = (key: 'submit' | 'leader' | 'dual' | 'done'): FlowStepState => {
     if (key === 'submit') return 'completed'
     if (key === 'leader') {
       if (status === '待审批') return 'current'
@@ -233,18 +253,109 @@ const getBpmSteps = (req: any) => {
   }
 
   return [
-    { key: 'submit', label: '提交申请', state: stepState('submit') },
-    { key: 'leader', label: '团队长审批', state: stepState('leader') },
-    ...(controlled ? [{ key: 'dual', label: '双签确认', state: stepState('dual') }] : []),
-    { key: 'done', label: '完成领用', state: stepState('done') },
+    {
+      key: 'submit',
+      label: '提交申请',
+      state: stepState('submit'),
+      description: '研发提交试剂领用申请',
+      operator: req.requester?.real_name || '-',
+      time: formatTime(req.created_at),
+    },
+    {
+      key: 'leader',
+      label: '团队长审批',
+      state: stepState('leader'),
+      description: '团队长审批领用必要性与合规性',
+      operator: leaderOperator || undefined,
+      time: req.leader_approved_at ? formatTime(req.leader_approved_at) : undefined,
+    },
+    ...(controlled
+      ? [{
+          key: 'dual',
+          label: '双签确认',
+          state: stepState('dual') as FlowStepState,
+          description: 'A/B 钥匙持有人分别确认',
+          operator: dualOperator || undefined,
+          time: latestDualTime ? formatTime(latestDualTime) : undefined,
+        }]
+      : []),
+    {
+      key: 'done',
+      label: '完成领用',
+      state: stepState('done'),
+      description: '流程结束并记录领用流水',
+      operator: stepState('done') === 'completed' ? '系统' : undefined,
+      time: stepState('done') === 'completed' ? formatTime(req.updated_at) : undefined,
+    },
   ]
 }
 
-const stepClass = (state: string) => {
-  if (state === 'completed') return 'bg-emerald-100 border-emerald-200 text-emerald-700'
-  if (state === 'current') return 'bg-blue-100 border-blue-200 text-blue-700'
-  if (state === 'rejected') return 'bg-red-100 border-red-200 text-red-700'
-  return 'bg-gray-100 border-gray-200 text-gray-500'
+const getFlowActions = (req: any): FlowActionItem[] => {
+  const actions: FlowActionItem[] = []
+  const isProcessing = keyConfirming.value === req.id
+
+  if (props.role === 'leader' && req.status === '待审批') {
+    actions.push({ key: 'leader-approve', label: '审批', variant: 'primary' })
+  }
+  if (canCurrentUserKeyConfirm(req)) {
+    actions.push({ key: 'key-confirm', label: '确认', variant: 'primary', disabled: isProcessing, loading: isProcessing })
+    actions.push({ key: 'key-reject', label: '驳回', variant: 'destructive', disabled: isProcessing })
+  }
+
+  return actions
+}
+
+const hasFlowActions = (req: any) => getFlowActions(req).length > 0
+const currentFlowDetailRequest = computed(() => requests.value.find((req) => req.id === flowDetailRequestId.value) || null)
+
+const openFlowDetail = (req: any) => {
+  flowDetailRequestId.value = req.id
+  flowDetailOpen.value = true
+}
+
+const getFlowMeta = (req: any) => {
+  return [
+    { label: '申请单号', value: `#${req.id}` },
+    { label: '申请人', value: req.requester?.real_name || '-' },
+    { label: '申请量', value: String(req.amount ?? '-') },
+    { label: '申请时间', value: formatTime(req.created_at) },
+    { label: '用途', value: req.purpose || '-' },
+  ]
+}
+
+const getFlowNotes = (req: any) => {
+  const notes: Array<{ type?: 'info' | 'warning' | 'error' | 'success'; text: string }> = []
+  if (req.status === '待双签') {
+    notes.push({
+      type: 'info',
+      text: `钥匙A ${req.key_holder_a?.real_name || '-'}：${req.key_holder_a_confirmed_at ? '已确认' : '等待中'}；钥匙B ${req.key_holder_b?.real_name || '-'}：${req.key_holder_b_confirmed_at ? '已确认' : '等待中'}`,
+    })
+    if (req.expires_at) notes.push({ type: 'warning', text: `双签截止时间：${formatTime(req.expires_at)}` })
+  }
+  if (req.status === '已驳回' && (req.leader_reject_msg || req.key_holder_reject_msg)) {
+    notes.push({ type: 'error', text: `驳回原因：${req.leader_reject_msg || req.key_holder_reject_msg}` })
+  }
+  return notes
+}
+
+const handleFlowAction = (req: any, actionKey: string) => {
+  if (actionKey === 'leader-approve') {
+    flowDetailOpen.value = false
+    openApproveDialog(req)
+    return
+  }
+  if (actionKey === 'key-confirm') {
+    submitKeyHolderConfirm(req.id, true)
+    return
+  }
+  if (actionKey === 'key-reject') {
+    submitKeyHolderConfirm(req.id, false, '钥匙持有人驳回')
+  }
+}
+
+const handleFlowDetailAction = (actionKey: string) => {
+  if (!currentFlowDetailRequest.value) return
+  handleFlowAction(currentFlowDetailRequest.value, actionKey)
 }
 </script>
 
@@ -314,23 +425,39 @@ const stepClass = (state: string) => {
               class="border rounded-xl p-4 hover:shadow-sm transition-shadow"
               :class="latestRequestId === req.id ? 'ring-2 ring-blue-200 border-blue-300' : ''"
             >
-              <div class="space-y-2">
-                <div class="flex items-center gap-2">
-                  <span class="font-medium text-sm text-gray-900">{{ req.reagent_item?.reagent_catalog?.name || '未知试剂' }}</span>
-                  <span :class="['inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium border', getStatusConfig(req.status).color]">
-                    <component :is="getStatusConfig(req.status).icon" class="w-3 h-3" />
-                    {{ getStatusConfig(req.status).label }}
-                  </span>
+              <div class="flex items-start justify-between gap-4">
+                <div class="flex-1 min-w-0 space-y-2">
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-sm text-gray-900">{{ req.reagent_item?.reagent_catalog?.name || '未知试剂' }}</span>
+                    <FlowStatusPill :status="req.status" />
+                    <Button size="sm" variant="outline" class="ml-auto h-7 px-3 text-[11px]" @click="openFlowDetail(req)">流转单</Button>
+                  </div>
+                  <div class="flex items-center gap-3 text-xs text-gray-500">
+                    <span>申请人: {{ req.requester?.real_name || '-' }}</span>
+                    <span>用量: {{ req.amount }}</span>
+                    <span v-if="req.purpose">用途: {{ req.purpose }}</span>
+                    <span>{{ formatTime(req.created_at) }}</span>
+                  </div>
+                  <FlowTimeline :steps="getBpmSteps(req)" mode="compact" />
+
+                  <div v-if="req.status === '待双签'" class="flex items-center gap-4 text-xs bg-purple-50 rounded-lg px-3 py-2 border border-purple-100">
+                    <span :class="req.key_holder_a_confirmed_at ? 'text-green-600' : 'text-gray-500'">钥匙A {{ req.key_holder_a?.real_name || '-' }}: {{ req.key_holder_a_confirmed_at ? '已确认' : '等待中' }}</span>
+                    <span :class="req.key_holder_b_confirmed_at ? 'text-green-600' : 'text-gray-500'">钥匙B {{ req.key_holder_b?.real_name || '-' }}: {{ req.key_holder_b_confirmed_at ? '已确认' : '等待中' }}</span>
+                    <span v-if="req.expires_at" class="text-orange-500">截止 {{ formatTime(req.expires_at) }}</span>
+                  </div>
+
+                  <div v-if="req.status === '已驳回' && (req.leader_reject_msg || req.key_holder_reject_msg)" class="text-xs text-red-600 bg-red-50 rounded px-2 py-1">驳回原因: {{ req.leader_reject_msg || req.key_holder_reject_msg }}</div>
+                  <div v-if="!hasFlowActions(req)" class="text-xs text-slate-400">当前角色仅可查看流程状态</div>
                 </div>
-                <div class="flex items-center gap-3 text-xs text-gray-500">
-                  <span>申请人: {{ req.requester?.real_name || '-' }}</span>
-                  <span>用量: {{ req.amount }}</span>
-                  <span v-if="req.purpose">用途: {{ req.purpose }}</span>
-                  <span>{{ formatTime(req.created_at) }}</span>
-                </div>
-                <div class="flex flex-wrap gap-2 pt-1">
-                  <span v-for="step in getBpmSteps(req)" :key="step.key" :class="['inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium', stepClass(step.state)]">{{ step.label }}</span>
-                </div>
+
+                <FlowActionPanel
+                  v-if="hasFlowActions(req)"
+                  class="w-full max-w-52 shrink-0"
+                  title="流程动作"
+                  description="按当前角色展示可执行动作"
+                  :actions="getFlowActions(req)"
+                  @action="(actionKey) => handleFlowAction(req, actionKey)"
+                />
               </div>
             </div>
           </div>
@@ -383,10 +510,8 @@ const stepClass = (state: string) => {
             <div class="flex-1 min-w-0 space-y-2">
               <div class="flex items-center gap-2">
                 <span class="font-medium text-sm text-gray-900">{{ req.reagent_item?.reagent_catalog?.name || '未知试剂' }}</span>
-                <span :class="['inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium border', getStatusConfig(req.status).color]">
-                  <component :is="getStatusConfig(req.status).icon" class="w-3 h-3" />
-                  {{ getStatusConfig(req.status).label }}
-                </span>
+                <FlowStatusPill :status="req.status" />
+                <Button size="sm" variant="outline" class="ml-auto h-7 px-3 text-[11px]" @click="openFlowDetail(req)">流转单</Button>
               </div>
               <div class="flex items-center gap-3 text-xs text-gray-500">
                 <span>申请人: {{ req.requester?.real_name || '-' }}</span>
@@ -394,9 +519,7 @@ const stepClass = (state: string) => {
                 <span v-if="req.purpose">用途: {{ req.purpose }}</span>
                 <span>{{ formatTime(req.created_at) }}</span>
               </div>
-              <div class="flex flex-wrap gap-2 pt-1">
-                <span v-for="step in getBpmSteps(req)" :key="step.key" :class="['inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium', stepClass(step.state)]">{{ step.label }}</span>
-              </div>
+              <FlowTimeline :steps="getBpmSteps(req)" mode="compact" />
 
               <div v-if="req.status === '待双签'" class="flex items-center gap-4 text-xs bg-purple-50 rounded-lg px-3 py-2 border border-purple-100">
                 <span :class="req.key_holder_a_confirmed_at ? 'text-green-600' : 'text-gray-500'">钥匙A {{ req.key_holder_a?.real_name || '-' }}: {{ req.key_holder_a_confirmed_at ? '已确认' : '等待中' }}</span>
@@ -405,19 +528,17 @@ const stepClass = (state: string) => {
               </div>
 
               <div v-if="req.status === '已驳回' && (req.leader_reject_msg || req.key_holder_reject_msg)" class="text-xs text-red-600 bg-red-50 rounded px-2 py-1">驳回原因: {{ req.leader_reject_msg || req.key_holder_reject_msg }}</div>
+              <div v-if="!hasFlowActions(req)" class="text-xs text-slate-400">当前角色仅可查看流程状态</div>
             </div>
 
-            <div class="flex items-center gap-2 shrink-0">
-              <template v-if="role === 'leader' && req.status === '待审批'">
-                <Button size="sm" variant="primary" class="text-xs" @click="openApproveDialog(req)">审批</Button>
-              </template>
-              <template v-if="canCurrentUserKeyConfirm(req)">
-                <Button size="sm" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs" :disabled="keyConfirming === req.id" @click="submitKeyHolderConfirm(req.id, true)">
-                  <Loader2 v-if="keyConfirming === req.id" class="w-3 h-3 animate-spin mr-1" />确认
-                </Button>
-                <Button size="sm" class="bg-red-100 hover:bg-red-200 text-red-700 text-xs" @click="submitKeyHolderConfirm(req.id, false, '钥匙持有人驳回')">驳回</Button>
-              </template>
-            </div>
+            <FlowActionPanel
+              v-if="hasFlowActions(req)"
+              class="w-full max-w-52 shrink-0"
+              title="流程动作"
+              description="按当前角色展示可执行动作"
+              :actions="getFlowActions(req)"
+              @action="(actionKey) => handleFlowAction(req, actionKey)"
+            />
           </div>
         </div>
       </div>
@@ -465,5 +586,18 @@ const stepClass = (state: string) => {
         </div>
       </div>
     </Transition>
+
+    <FlowDetailDialog
+      :open="flowDetailOpen"
+      title="领用流程流转单"
+      :subtitle="currentFlowDetailRequest ? (currentFlowDetailRequest.reagent_item?.reagent_catalog?.name || '未知试剂') : ''"
+      :status="currentFlowDetailRequest?.status || '-'"
+      :meta="currentFlowDetailRequest ? getFlowMeta(currentFlowDetailRequest) : []"
+      :steps="currentFlowDetailRequest ? getBpmSteps(currentFlowDetailRequest) : []"
+      :actions="currentFlowDetailRequest ? getFlowActions(currentFlowDetailRequest) : []"
+      :notes="currentFlowDetailRequest ? getFlowNotes(currentFlowDetailRequest) : []"
+      @close="flowDetailOpen = false"
+      @action="handleFlowDetailAction"
+    />
   </div>
 </template>
