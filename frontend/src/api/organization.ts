@@ -23,10 +23,16 @@ export const fetchDepartments = async (): Promise<Department[]> => {
     return request.get('/departments') as any as Promise<Department[]>
 }
 
-export const fetchUsers = async (departmentId?: number): Promise<User[]> => {
-    return request.get('/users', {
-        params: { department_id: departmentId }
-    }) as any as Promise<User[]>
+export const fetchUsers = async (
+    departmentId?: number,
+    includeChildren = true
+): Promise<User[]> => {
+    const params: Record<string, any> = {}
+    if (typeof departmentId === 'number') {
+        params.department_id = departmentId
+        params.include_children = includeChildren
+    }
+    return request.get('/users', { params }) as any as Promise<User[]>
 }
 
 export const createUser = async (data: Partial<User>) => {

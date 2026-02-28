@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"lab-system-backend/internal/database"
 	"lab-system-backend/internal/models"
@@ -27,12 +28,28 @@ func GetDepartments(c *gin.Context) {
 // GetUsers returns users, optionally filtered by department_id
 func GetUsers(c *gin.Context) {
 	deptID := c.Query("department_id")
+	includeChildrenRaw := strings.TrimSpace(strings.ToLower(c.DefaultQuery("include_children", "true")))
+	includeChildren := includeChildrenRaw != "false" && includeChildrenRaw != "0" && includeChildrenRaw != "no"
 
 	query := database.DB.Model(&models.User{}).Preload("Department")
 
 	if deptID != "" {
-		// Include children departments? For simple MVP, just exact match
-		query = query.Where("department_id = ?", deptID)
+		if includeChildren {
+			deptIDUint, err := strconv.ParseUint(deptID, 10, 32)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid department_id"})
+				return
+			}
+			var allDepts []models.Department
+			if err := database.DB.Find(&allDepts).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch departments"})
+				return
+			}
+			scopeIDs := collectDeptScopeIDs(allDepts, uint(deptIDUint))
+			query = query.Where("department_id IN ?", scopeIDs)
+		} else {
+			query = query.Where("department_id = ?", deptID)
+		}
 	}
 
 	var users []models.User
@@ -42,6 +59,37 @@ func GetUsers(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, users)
+}
+
+func collectDeptScopeIDs(all []models.Department, rootID uint) []uint {
+	childrenMap := make(map[uint][]uint)
+	for _, dept := range all {
+		if dept.ParentID == nil {
+			continue
+		}
+		parent := *dept.ParentID
+		childrenMap[parent] = append(childrenMap[parent], dept.ID)
+	}
+
+	visited := make(map[uint]bool)
+	queue := []uint{rootID}
+	visited[rootID] = true
+	result := []uint{rootID}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		for _, child := range childrenMap[current] {
+			if visited[child] {
+				continue
+			}
+			visited[child] = true
+			result = append(result, child)
+			queue = append(queue, child)
+		}
+	}
+
+	return result
 }
 
 // Helper: Build Tree directly (assuming small dataset)

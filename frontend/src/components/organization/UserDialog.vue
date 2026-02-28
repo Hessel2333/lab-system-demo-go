@@ -7,6 +7,7 @@ const props = defineProps<{
   modelValue: boolean
   editUser?: User | null
   department?: Department | null
+  departments?: Department[]
 }>()
 
 const emit = defineEmits<{
@@ -31,6 +32,24 @@ const roles = [
     { value: 'measurement_specialist', label: '计量专员' },
     { value: 'safety_specialist', label: '安全专员' },
 ]
+
+interface DepartmentOption {
+  id: number
+  label: string
+}
+
+const buildDepartmentOptions = (nodes: Department[] = [], depth = 0, acc: DepartmentOption[] = []) => {
+  for (const node of nodes) {
+    const prefix = depth > 0 ? `${'  '.repeat(depth)}└ ` : ''
+    acc.push({ id: node.ID, label: `${prefix}${node.name}` })
+    if (node.children?.length) {
+      buildDepartmentOptions(node.children, depth + 1, acc)
+    }
+  }
+  return acc
+}
+
+const departmentOptions = computed(() => buildDepartmentOptions(props.departments || []))
 
 // Sync form with props
 watch(() => props.modelValue, (val) => {
@@ -90,11 +109,21 @@ const isEdit = computed(() => !!props.editUser)
               <input v-model="formData.username" required type="text" class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border" placeholder="例如：zhangsan">
           </div>
           
-           <div>
+          <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">角色</label>
               <select v-model="formData.role" class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border">
                   <option v-for="role in roles" :key="role.value" :value="role.value">
                       {{ role.label }}
+                  </option>
+              </select>
+          </div>
+
+          <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">所属组织</label>
+              <select v-model.number="formData.department_id" class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border">
+                  <option :value="0" disabled>请选择组织节点</option>
+                  <option v-for="dept in departmentOptions" :key="dept.id" :value="dept.id">
+                      {{ dept.label }}
                   </option>
               </select>
           </div>
