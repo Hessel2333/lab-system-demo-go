@@ -56,6 +56,27 @@ const roleName = (role?: string) => {
 
 const sortedPermissions = computed(() => [...permissions.value].sort((a, b) => a.instrument_name.localeCompare(b.instrument_name, 'zh-CN')))
 
+const roleFlowCapabilities = computed(() => {
+  const role = String(props.user?.role || '')
+  if (!role) return ['无流程权限信息']
+  if (role === 'admin') {
+    return ['全流程管理（配置/审批/执行）', '可维护用户与权限策略']
+  }
+  if (role === 'team_leader' || role === 'director') {
+    return ['申购审批', '管控领用审批', '团队流程监督']
+  }
+  if (role === 'procurement' || role === 'procurement_specialist') {
+    return ['采购导入与匹配', '到货确认与赋码', '采购链路执行']
+  }
+  if (role === 'researcher' || role === 'member') {
+    return ['提交申购', '到货入库', '发起领用申请']
+  }
+  if (role === 'measurement_specialist' || role === 'safety_specialist') {
+    return ['专项流程支持（按模块授权）']
+  }
+  return ['按组织角色默认授权']
+})
+
 const loadPermissions = async () => {
   if (!props.user) return
   loading.value = true
@@ -80,7 +101,7 @@ const loadReagentPermissions = async () => {
     }
   } catch (e) {
     console.error(e)
-    toast.error('加载试剂流程权限失败')
+    toast.error('加载试剂双签权限失败')
   } finally {
     reagentPermLoading.value = false
   }
@@ -136,7 +157,7 @@ const saveReagentPermissions = async () => {
   try {
     await updateUserReagentPermissions(props.user.ID, reagentPerm.value)
     await loadGlobalKeyHolders()
-    toast.success('已保存试剂流程权限')
+    toast.success('已保存试剂双签权限')
   } catch (e) {
     console.error(e)
     toast.error('保存失败')
@@ -181,7 +202,7 @@ const saveReagentPermissions = async () => {
           class="py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2"
           :class="activeTab === 'reagent' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
         >
-          <Lock class="w-4 h-4" /> 试剂流程权限
+          <Lock class="w-4 h-4" /> 试剂双签权限
         </button>
       </div>
 
@@ -217,8 +238,22 @@ const saveReagentPermissions = async () => {
         </div>
 
         <div v-else class="p-6 space-y-4">
+          <div class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="text-xs font-semibold text-slate-700 mb-2">角色驱动权限（只读）</div>
+            <div class="flex flex-wrap gap-2">
+              <span
+                v-for="capability in roleFlowCapabilities"
+                :key="capability"
+                class="inline-flex items-center rounded-md bg-white border border-slate-200 px-2 py-1 text-[11px] text-slate-600"
+              >
+                {{ capability }}
+              </span>
+            </div>
+            <p class="mt-2 text-[11px] text-slate-500">以上权限由“组织角色”自动决定；如需调整请编辑成员角色。</p>
+          </div>
+
           <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-            双签持有人为系统全局唯一角色。保存后会自动替换原持有人。
+            这里仅配置双签持有人。A/B 为系统全局唯一角色，保存后会自动替换原持有人。
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -270,7 +305,7 @@ const saveReagentPermissions = async () => {
 
             <div class="pt-2">
               <Button variant="primary" :disabled="savingReagentPerm" @click="saveReagentPermissions">
-                {{ savingReagentPerm ? '保存中...' : '保存试剂流程权限' }}
+                {{ savingReagentPerm ? '保存中...' : '保存试剂双签权限' }}
               </Button>
             </div>
           </div>
