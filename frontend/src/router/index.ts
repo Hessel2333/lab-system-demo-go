@@ -24,6 +24,10 @@ const router = createRouter({
                     component: () => import('@/views/UserManagement.vue')
                 },
                 {
+                    path: 'users/permission-settings',
+                    component: () => import('@/views/UserPermissionSettings.vue')
+                },
+                {
                     path: 'master-data',
                     component: () => import('@/views/MasterDataCenter.vue')
                 },

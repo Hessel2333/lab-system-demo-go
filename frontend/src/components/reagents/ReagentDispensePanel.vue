@@ -592,7 +592,7 @@ const handleFlowDetailAction = (actionKey: string) => {
             </div>
             <div v-if="approveTarget?.reagent_item?.reagent_catalog?.is_controlled" class="bg-purple-50 border border-purple-200 rounded-lg px-4 py-3 space-y-2">
               <p class="text-xs font-semibold text-purple-800">管控品将自动分配固定双签持有人（由用户权限管理配置）</p>
-              <p class="text-[11px] text-purple-700">如需调整持有人，请在「用户管理 -> 权限 -> 试剂双签角色」中修改。</p>
+              <p class="text-[11px] text-purple-700">如需调整持有人，请在「用户与组织 -> 双签设置」中修改。</p>
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-700 mb-1">驳回原因 <span class="text-gray-400">(驳回时必填)</span></label>

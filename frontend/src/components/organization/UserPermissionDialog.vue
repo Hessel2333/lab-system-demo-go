@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { X, Shield, Lock, UserCog, Building2 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import type { User } from '@/api/organization'
 import {
   fetchUserPermissions,
   updateUserPermission,
-  fetchUserReagentPermissions,
-  updateUserReagentPermissions,
   fetchUsers,
   type InstrumentPermission,
 } from '@/api/organization'
@@ -22,6 +21,8 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
 }>()
 
+const router = useRouter()
+
 type PermissionTab = 'instruments' | 'reagent'
 
 const activeTab = ref<PermissionTab>('instruments')
@@ -30,14 +31,10 @@ const loading = ref(false)
 const savingInstrumentId = ref<number | null>(null)
 
 const reagentPermLoading = ref(false)
-const savingReagentPerm = ref(false)
-const reagentPerm = ref({
-  is_dispense_key_holder_a: false,
-  is_dispense_key_holder_b: false,
-})
-
 const keyHolderAName = ref('-')
 const keyHolderBName = ref('-')
+const keyHolderAId = ref<number | null>(null)
+const keyHolderBId = ref<number | null>(null)
 
 const roleName = (role?: string) => {
   const map: Record<string, string> = {
@@ -77,6 +74,14 @@ const roleFlowCapabilities = computed(() => {
   return ['按组织角色默认授权']
 })
 
+const currentUserDualSignTags = computed(() => {
+  if (!props.user?.ID) return [] as string[]
+  const tags: string[] = []
+  if (props.user.ID === keyHolderAId.value) tags.push('当前成员是A角持有人')
+  if (props.user.ID === keyHolderBId.value) tags.push('当前成员是B角持有人')
+  return tags
+})
+
 const loadPermissions = async () => {
   if (!props.user) return
   loading.value = true
@@ -90,33 +95,23 @@ const loadPermissions = async () => {
   }
 }
 
-const loadReagentPermissions = async () => {
-  if (!props.user) return
-  reagentPermLoading.value = true
-  try {
-    const data = await fetchUserReagentPermissions(props.user.ID)
-    reagentPerm.value = {
-      is_dispense_key_holder_a: !!data.is_dispense_key_holder_a,
-      is_dispense_key_holder_b: !!data.is_dispense_key_holder_b,
-    }
-  } catch (e) {
-    console.error(e)
-    toast.error('加载试剂双签权限失败')
-  } finally {
-    reagentPermLoading.value = false
-  }
-}
-
 const loadGlobalKeyHolders = async () => {
+  reagentPermLoading.value = true
   try {
     const allUsers = await fetchUsers()
     const holderA = allUsers.find((u) => !!u.is_dispense_key_holder_a)
     const holderB = allUsers.find((u) => !!u.is_dispense_key_holder_b)
     keyHolderAName.value = holderA?.real_name || '-'
     keyHolderBName.value = holderB?.real_name || '-'
+    keyHolderAId.value = holderA?.ID || null
+    keyHolderBId.value = holderB?.ID || null
   } catch (e) {
     keyHolderAName.value = '-'
     keyHolderBName.value = '-'
+    keyHolderAId.value = null
+    keyHolderBId.value = null
+  } finally {
+    reagentPermLoading.value = false
   }
 }
 
@@ -125,7 +120,7 @@ watch(
   async (val) => {
     if (!val || !props.user) return
     activeTab.value = 'instruments'
-    await Promise.all([loadPermissions(), loadReagentPermissions(), loadGlobalKeyHolders()])
+    await Promise.all([loadPermissions(), loadGlobalKeyHolders()])
   }
 )
 
@@ -146,24 +141,9 @@ const togglePermission = async (perm: InstrumentPermission) => {
   }
 }
 
-const saveReagentPermissions = async () => {
-  if (!props.user) return
-  if (reagentPerm.value.is_dispense_key_holder_a && reagentPerm.value.is_dispense_key_holder_b) {
-    toast.error('同一用户不能同时担任A/B双签持有人')
-    return
-  }
-
-  savingReagentPerm.value = true
-  try {
-    await updateUserReagentPermissions(props.user.ID, reagentPerm.value)
-    await loadGlobalKeyHolders()
-    toast.success('已保存试剂双签权限')
-  } catch (e) {
-    console.error(e)
-    toast.error('保存失败')
-  } finally {
-    savingReagentPerm.value = false
-  }
+const openGlobalDualSignSettings = () => {
+  emit('update:modelValue', false)
+  router.push('/users/permission-settings')
 }
 </script>
 
@@ -253,62 +233,40 @@ const saveReagentPermissions = async () => {
           </div>
 
           <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-            这里仅配置双签持有人。A/B 为系统全局唯一角色，保存后会自动替换原持有人。
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div class="rounded-lg border border-gray-100 bg-white px-4 py-3">
-              <div class="text-xs text-gray-500">当前持有人 A</div>
-              <div class="mt-1 text-sm font-semibold text-gray-900 flex items-center gap-2"><Building2 class="w-4 h-4 text-gray-400" />{{ keyHolderAName }}</div>
-            </div>
-            <div class="rounded-lg border border-gray-100 bg-white px-4 py-3">
-              <div class="text-xs text-gray-500">当前持有人 B</div>
-              <div class="mt-1 text-sm font-semibold text-gray-900 flex items-center gap-2"><Building2 class="w-4 h-4 text-gray-400" />{{ keyHolderBName }}</div>
-            </div>
+            双签持有人由“全局配置”统一维护，不在单成员弹窗中直接编辑。
           </div>
 
           <div v-if="reagentPermLoading" class="py-10 text-sm text-gray-400 text-center">加载中...</div>
-          <div v-else class="space-y-3">
-            <div class="flex items-center justify-between rounded-lg border border-gray-100 px-4 py-3">
-              <div>
-                <div class="text-sm font-medium text-gray-900">钥匙持有人 A</div>
-                <div class="text-xs text-gray-500">建议用于团队长审批链路</div>
+          <template v-else>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div class="rounded-lg border border-gray-100 bg-white px-4 py-3">
+                <div class="text-xs text-gray-500">当前持有人 A</div>
+                <div class="mt-1 text-sm font-semibold text-gray-900 flex items-center gap-2"><Building2 class="w-4 h-4 text-gray-400" />{{ keyHolderAName }}</div>
               </div>
-              <button
-                @click="reagentPerm.is_dispense_key_holder_a = !reagentPerm.is_dispense_key_holder_a; if (reagentPerm.is_dispense_key_holder_a) reagentPerm.is_dispense_key_holder_b = false"
-                class="relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors"
-                :class="reagentPerm.is_dispense_key_holder_a ? 'bg-green-500' : 'bg-gray-200'"
-              >
-                <span
-                  class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition"
-                  :class="reagentPerm.is_dispense_key_holder_a ? 'translate-x-5' : 'translate-x-0'"
-                />
-              </button>
+              <div class="rounded-lg border border-gray-100 bg-white px-4 py-3">
+                <div class="text-xs text-gray-500">当前持有人 B</div>
+                <div class="mt-1 text-sm font-semibold text-gray-900 flex items-center gap-2"><Building2 class="w-4 h-4 text-gray-400" />{{ keyHolderBName }}</div>
+              </div>
             </div>
 
-            <div class="flex items-center justify-between rounded-lg border border-gray-100 px-4 py-3">
-              <div>
-                <div class="text-sm font-medium text-gray-900">钥匙持有人 B</div>
-                <div class="text-xs text-gray-500">建议用于采购侧双签链路</div>
-              </div>
-              <button
-                @click="reagentPerm.is_dispense_key_holder_b = !reagentPerm.is_dispense_key_holder_b; if (reagentPerm.is_dispense_key_holder_b) reagentPerm.is_dispense_key_holder_a = false"
-                class="relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors"
-                :class="reagentPerm.is_dispense_key_holder_b ? 'bg-green-500' : 'bg-gray-200'"
-              >
+            <div v-if="currentUserDualSignTags.length > 0" class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+              <div class="flex flex-wrap gap-2">
                 <span
-                  class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition"
-                  :class="reagentPerm.is_dispense_key_holder_b ? 'translate-x-5' : 'translate-x-0'"
-                />
-              </button>
+                  v-for="tag in currentUserDualSignTags"
+                  :key="tag"
+                  class="inline-flex items-center rounded-md bg-white border border-blue-200 px-2 py-1 text-[11px] text-blue-700"
+                >
+                  {{ tag }}
+                </span>
+              </div>
             </div>
 
-            <div class="pt-2">
-              <Button variant="primary" :disabled="savingReagentPerm" @click="saveReagentPermissions">
-                {{ savingReagentPerm ? '保存中...' : '保存试剂双签权限' }}
+            <div class="pt-1">
+              <Button variant="primary" @click="openGlobalDualSignSettings">
+                前往全局双签配置
               </Button>
             </div>
-          </div>
+          </template>
         </div>
       </div>
 

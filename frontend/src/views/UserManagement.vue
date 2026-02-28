@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   fetchDepartments,
   fetchUsers,
@@ -34,6 +35,7 @@ const showConfirm = ref(false)
 const userToDelete = ref<number | null>(null)
 const showPermissionDialog = ref(false)
 const permissionUser = ref<User | null>(null)
+const router = useRouter()
 
 const userColumns = [
   { key: 'name', label: '姓名' },
@@ -129,6 +131,10 @@ const handlePermission = (user: User) => {
   showPermissionDialog.value = true
 }
 
+const openGlobalDualSignSettings = () => {
+  router.push('/users/permission-settings')
+}
+
 const confirmDelete = async () => {
   if (userToDelete.value === null) return
   try {
@@ -212,9 +218,14 @@ const sectionDescription = computed(() => {
 
     <TableSection class="min-w-0 flex-1" :title="sectionTitle" :description="sectionDescription">
       <template #actions>
-        <Button variant="primary" size="sm" :disabled="!selectedDept" @click="handleAddUser">
-          添加成员
-        </Button>
+        <div class="flex items-center gap-2">
+          <Button variant="outline" size="sm" @click="openGlobalDualSignSettings">
+            双签设置
+          </Button>
+          <Button variant="primary" size="sm" :disabled="!selectedDept" @click="handleAddUser">
+            添加成员
+          </Button>
+        </div>
       </template>
 
       <template #toolbar>
