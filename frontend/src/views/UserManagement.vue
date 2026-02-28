@@ -39,7 +39,7 @@ const userColumns = [
   { key: 'name', label: '姓名' },
   { key: 'username', label: '工号/用户名' },
   { key: 'role', label: '组织角色' },
-  { key: 'flow_role', label: '流程角色' },
+  { key: 'flow_role', label: '试剂流程角色' },
   { key: 'status', label: '状态' },
   { key: 'actions', label: '操作', align: 'right' as const },
 ]
@@ -58,6 +58,26 @@ const roleMeta: Record<string, { label: string; className: string }> = {
 
 const roleName = (role: string) => roleMeta[role]?.label || role || '-'
 const roleBadgeClass = (role: string) => roleMeta[role]?.className || 'bg-gray-100 text-gray-700'
+
+const getFlowRoles = (user: User) => {
+  const tags: Array<{ label: string; className: string }> = []
+  if (user.role === 'team_leader') {
+    tags.push({ label: '团队长审批', className: 'bg-indigo-100 text-indigo-700' })
+  }
+  if (user.role === 'procurement' || user.role === 'procurement_specialist') {
+    tags.push({ label: '采购执行', className: 'bg-amber-100 text-amber-700' })
+  }
+  if (user.is_dispense_key_holder_a) {
+    tags.push({ label: '双签A', className: 'bg-emerald-100 text-emerald-700' })
+  }
+  if (user.is_dispense_key_holder_b) {
+    tags.push({ label: '双签B', className: 'bg-orange-100 text-orange-700' })
+  }
+  if (tags.length === 0) {
+    tags.push({ label: '无特殊流程角色', className: 'bg-slate-100 text-slate-500' })
+  }
+  return tags
+}
 
 const loadDepartments = async () => {
   try {
@@ -272,10 +292,15 @@ const sectionDescription = computed(() => {
             </span>
           </td>
           <td class="px-6 py-3">
-            <div class="flex items-center gap-1.5">
-              <span v-if="user.is_dispense_key_holder_a" class="inline-flex items-center rounded bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">钥匙A</span>
-              <span v-if="user.is_dispense_key_holder_b" class="inline-flex items-center rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">钥匙B</span>
-              <span v-if="!user.is_dispense_key_holder_a && !user.is_dispense_key_holder_b" class="text-xs text-gray-400">-</span>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span
+                v-for="tag in getFlowRoles(user)"
+                :key="tag.label"
+                class="inline-flex items-center rounded px-2 py-0.5 text-[11px] font-semibold"
+                :class="tag.className"
+              >
+                {{ tag.label }}
+              </span>
             </div>
           </td>
           <td class="px-6 py-3">
