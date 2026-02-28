@@ -27,7 +27,6 @@ const loading = ref(false)
 const selectedDept = ref<Department | null>(null)
 const searchQuery = ref('')
 const roleFilter = ref('全部')
-const includeChildren = ref(true)
 
 const showDialog = ref(false)
 const editUser = ref<User | null>(null)
@@ -77,7 +76,7 @@ const loadUsers = async () => {
   if (!selectedDept.value) return
   loading.value = true
   try {
-    users.value = await fetchUsers(selectedDept.value.ID, includeChildren.value)
+    users.value = await fetchUsers(selectedDept.value.ID, false)
   } catch (e) {
     console.error('Failed to load users', e)
     toast.error('人员台账加载失败')
@@ -102,11 +101,6 @@ const selectDepartment = (dept: Department) => {
   selectedDept.value = dept
   loadUsers()
 }
-
-watch(includeChildren, () => {
-  if (!selectedDept.value) return
-  loadUsers()
-})
 
 watch(showPermissionDialog, (open) => {
   if (!open) {
@@ -201,8 +195,7 @@ const sectionTitle = computed(() => {
 })
 
 const sectionDescription = computed(() => {
-  const scope = includeChildren.value ? '包含下级组织' : '仅直属成员'
-  return `${scope} · 共 ${users.value.length} 人`
+  return `共 ${users.value.length} 人`
 })
 </script>
 
@@ -235,20 +228,7 @@ const sectionDescription = computed(() => {
               <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
               <Input v-model="searchQuery" class="pl-9" placeholder="搜索姓名或用户名..." />
             </div>
-            <div class="apple-segmented w-fit sm:ml-auto">
-              <button
-                @click="includeChildren = true"
-                :class="['apple-segmented-btn', includeChildren ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']"
-              >
-                含下级
-              </button>
-              <button
-                @click="includeChildren = false"
-                :class="['apple-segmented-btn', !includeChildren ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']"
-              >
-                仅直属
-              </button>
-            </div>
+            <div class="text-xs text-gray-500 sm:ml-auto">当前显示所选组织直属成员</div>
           </div>
           <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
             <div class="flex items-center gap-2 text-xs text-gray-500">
