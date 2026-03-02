@@ -100,7 +100,7 @@ const saveDualSignHolders = async () => {
   saving.value = true
   try {
     await Promise.all(updateTasks)
-    toast.success('全局双签持有人已更新')
+    toast.success('权限策略已更新')
     await loadUsersData()
   } catch (error) {
     console.error(error)
@@ -116,8 +116,8 @@ onMounted(loadUsersData)
 <template>
   <div class="h-full flex flex-col gap-6">
     <TableSection
-      title="试剂双签全局配置"
-      description="设置全局唯一A角/B角持有人。领用双签流程将自动读取这里的配置。"
+      title="权限策略中心"
+      description="全局策略统一在此维护。当前已启用：试剂双签角色。"
     >
       <template #actions>
         <Button variant="outline" size="sm" class="gap-1.5" :disabled="loading" @click="loadUsersData">
@@ -128,7 +128,7 @@ onMounted(loadUsersData)
 
       <div class="space-y-4">
         <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
-          双签角色为系统全局配置，不在单个成员权限弹窗中单独编辑。
+          双签角色为全局策略，不在单个成员权限弹窗中单独编辑。
         </div>
 
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -173,9 +173,18 @@ onMounted(loadUsersData)
 
         <div class="flex justify-end">
           <Button variant="primary" :disabled="saving || loading" @click="saveDualSignHolders">
-            {{ saving ? '保存中...' : '保存全局双签配置' }}
+            {{ saving ? '保存中...' : '保存策略' }}
           </Button>
         </div>
+      </div>
+    </TableSection>
+
+    <TableSection
+      title="策略模块规划"
+      description="后续可在本页扩展审批链、通知范围、超时规则等全局策略。"
+    >
+      <div class="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+        暂未启用更多策略模块。
       </div>
     </TableSection>
 

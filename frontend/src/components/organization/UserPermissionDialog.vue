@@ -233,7 +233,7 @@ const openGlobalDualSignSettings = () => {
           </div>
 
           <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-            双签持有人由“全局配置”统一维护，不在单成员弹窗中直接编辑。
+            双签持有人由“权限策略中心”统一维护，不在单成员弹窗中直接编辑。
           </div>
 
           <div v-if="reagentPermLoading" class="py-10 text-sm text-gray-400 text-center">加载中...</div>
@@ -263,7 +263,7 @@ const openGlobalDualSignSettings = () => {
 
             <div class="pt-1">
               <Button variant="primary" @click="openGlobalDualSignSettings">
-                前往全局双签配置
+                前往权限策略中心
               </Button>
             </div>
           </template>

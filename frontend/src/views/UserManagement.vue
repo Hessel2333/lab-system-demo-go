@@ -18,7 +18,7 @@ import TableSection from '@/components/ui/TableSection.vue'
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
 import LedgerTable from '@/components/reagents/LedgerTable.vue'
-import { Loader2, Search } from 'lucide-vue-next'
+import { Loader2, Search, ShieldCheck } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 
 const departments = ref<Department[]>([])
@@ -135,6 +135,14 @@ const openGlobalDualSignSettings = () => {
   router.push('/users/permission-settings')
 }
 
+const keyHolderAName = computed(() => {
+  return allUsers.value.find((user) => !!user.is_dispense_key_holder_a)?.real_name || '未配置'
+})
+
+const keyHolderBName = computed(() => {
+  return allUsers.value.find((user) => !!user.is_dispense_key_holder_b)?.real_name || '未配置'
+})
+
 const confirmDelete = async () => {
   if (userToDelete.value === null) return
   try {
@@ -214,18 +222,30 @@ const sectionDescription = computed(() => {
           @select="selectDepartment"
         />
       </ul>
+
+      <div class="mt-4 border-t border-slate-100 pt-3">
+        <button
+          type="button"
+          class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-left transition hover:border-blue-200 hover:bg-blue-50"
+          @click="openGlobalDualSignSettings"
+        >
+          <div class="flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <ShieldCheck class="h-4 w-4 text-blue-600" />
+            权限策略
+          </div>
+          <div class="mt-2 text-[11px] leading-5 text-slate-500">
+            试剂双签：A角 {{ keyHolderAName }} / B角 {{ keyHolderBName }}
+          </div>
+          <div class="mt-1 text-[11px] text-blue-600">全局生效，点击进入配置</div>
+        </button>
+      </div>
     </div>
 
     <TableSection class="min-w-0 flex-1" :title="sectionTitle" :description="sectionDescription">
       <template #actions>
-        <div class="flex items-center gap-2">
-          <Button variant="outline" size="sm" @click="openGlobalDualSignSettings">
-            双签设置
-          </Button>
-          <Button variant="primary" size="sm" :disabled="!selectedDept" @click="handleAddUser">
-            添加成员
-          </Button>
-        </div>
+        <Button variant="primary" size="sm" :disabled="!selectedDept" @click="handleAddUser">
+          添加成员
+        </Button>
       </template>
 
       <template #toolbar>
