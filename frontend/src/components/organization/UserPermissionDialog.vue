@@ -143,7 +143,7 @@ const togglePermission = async (perm: InstrumentPermission) => {
 
 const openGlobalDualSignSettings = () => {
   emit('update:modelValue', false)
-  router.push('/users/permission-settings')
+  router.push({ path: '/users', query: { view: 'policy' } })
 }
 </script>
 
