@@ -25,7 +25,7 @@ const router = createRouter({
                 },
                 {
                     path: 'users/permission-settings',
-                    component: () => import('@/views/UserPermissionSettings.vue')
+                    redirect: { path: '/users', query: { view: 'policy' } }
                 },
                 {
                     path: 'master-data',

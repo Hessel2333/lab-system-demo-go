@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   fetchDepartments,
   fetchUsers,
@@ -14,6 +14,7 @@ import DepartmentTreeItem from '@/components/organization/DepartmentTreeItem.vue
 import UserDialog from '@/components/organization/UserDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import UserPermissionDialog from '@/components/organization/UserPermissionDialog.vue'
+import UserPermissionSettings from '@/views/UserPermissionSettings.vue'
 import TableSection from '@/components/ui/TableSection.vue'
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
@@ -36,6 +37,7 @@ const userToDelete = ref<number | null>(null)
 const showPermissionDialog = ref(false)
 const permissionUser = ref<User | null>(null)
 const router = useRouter()
+const route = useRoute()
 
 const userColumns = [
   { key: 'name', label: '姓名' },
@@ -98,9 +100,12 @@ const refreshData = async () => {
   await Promise.all([loadUsers(), loadAllUsers()])
 }
 
-const selectDepartment = (dept: Department) => {
+const selectDepartment = async (dept: Department) => {
   selectedDept.value = dept
-  loadUsers()
+  if (route.query.view === 'policy') {
+    await router.replace({ path: '/users' })
+  }
+  await loadUsers()
 }
 
 watch(showPermissionDialog, (open) => {
@@ -132,7 +137,7 @@ const handlePermission = (user: User) => {
 }
 
 const openGlobalDualSignSettings = () => {
-  router.push('/users/permission-settings')
+  router.push({ path: '/users', query: { view: 'policy' } })
 }
 
 const keyHolderAName = computed(() => {
@@ -207,6 +212,8 @@ const sectionTitle = computed(() => {
 const sectionDescription = computed(() => {
   return `共 ${users.value.length} 人`
 })
+
+const isPolicyView = computed(() => route.query.view === 'policy')
 </script>
 
 <template>
@@ -241,7 +248,9 @@ const sectionDescription = computed(() => {
       </div>
     </div>
 
-    <TableSection class="min-w-0 flex-1" :title="sectionTitle" :description="sectionDescription">
+    <UserPermissionSettings v-if="isPolicyView" class="min-w-0 flex-1" />
+
+    <TableSection v-else class="min-w-0 flex-1" :title="sectionTitle" :description="sectionDescription">
       <template #actions>
         <Button variant="primary" size="sm" :disabled="!selectedDept" @click="handleAddUser">
           添加成员
