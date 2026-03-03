@@ -66,21 +66,37 @@ const pageSize = 15
 const statusOptions = ['全部', '已入库', '已到货', '已耗尽']
 const cabinetOptions = ['全部', '普通柜', '管控柜']
 const tableColumns = [
-  { key: 'reagent', label: '试剂名称', class: 'min-w-[190px]' },
-  { key: 'barcode', label: '系统条码', class: 'min-w-[160px]' },
-  { key: 'remaining', label: '剩余量', class: 'min-w-[180px]' },
-  { key: 'cabinet', label: '试剂柜', class: 'min-w-[190px]' },
-  { key: 'location', label: '库位', class: 'min-w-[120px]' },
-  { key: 'batch', label: '批次来源', class: 'min-w-[160px]' },
-  { key: 'status', label: '状态', class: 'min-w-[100px]' },
-  { key: 'expiry', label: '有效期', class: 'min-w-[120px]' },
-  { key: 'actions', label: '操作', align: 'right' as const, class: 'min-w-[170px]' },
+  { key: 'reagent', label: '试剂名称', class: 'w-[18%]' },
+  { key: 'barcode', label: '系统条码', class: 'w-[14%]' },
+  { key: 'remaining', label: '剩余量', class: 'w-[14%]' },
+  { key: 'cabinet', label: '试剂柜', class: 'w-[14%]' },
+  { key: 'location', label: '库位', class: 'w-[8%]' },
+  { key: 'batch', label: '批次来源', class: 'w-[12%]' },
+  { key: 'status', label: '状态', class: 'w-[8%]' },
+  { key: 'expiry', label: '有效期', class: 'w-[8%]' },
+  { key: 'actions', label: '操作', align: 'right' as const, class: 'w-[14%] whitespace-nowrap' },
 ]
 
 const getCabinetName = (item: ReagentItem) => item.cabinet?.name ?? (item.cabinet_id > 0 ? `柜#${item.cabinet_id}` : null)
 const isControlledCabinet = (item: ReagentItem) => item.cabinet?.cabinet_type === '易制毒制爆试剂柜'
 const getItemLocation = (item: ReagentItem) => item.cabinet?.location || item.location || '—'
 const isControlledItem = (item: ReagentItem) => !!item.reagent_catalog?.is_controlled
+
+const splitCabinetLabel = (label?: string | null) => {
+  const raw = String(label || '').trim()
+  if (!raw) return ['—']
+  const parts = raw.split(/[-/·]/).map((s) => s.trim()).filter(Boolean)
+  if (parts.length <= 1) return [raw]
+  return [parts[0]!, parts.slice(1).join('·')]
+}
+
+const splitBatchLabel = (batch?: string | null) => {
+  const raw = String(batch || '系统批次').trim()
+  if (!raw) return ['系统批次']
+  const parts = raw.split('-').map((s) => s.trim()).filter(Boolean)
+  if (parts.length <= 1) return [raw]
+  return [parts[0]!, parts.slice(1).join('-')]
+}
 
 const allGroups = ref<TeamGroup[]>([])
 const isLoadingTeam = ref(false)
@@ -559,14 +575,30 @@ const getRemainingColor = (pct: number) => {
               </div>
             </td>
             <td class="px-6 py-4">
-              <span v-if="item.cabinet_id > 0" :class="['inline-flex max-w-[180px] items-center px-2 py-0.5 border rounded font-medium text-xs', isControlledCabinet(item) ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-600 border-blue-200']" :title="getCabinetName(item) || ''">
-                <span class="truncate whitespace-nowrap">{{ getCabinetName(item) }}</span>
+              <span v-if="item.cabinet_id > 0" :class="['inline-flex max-w-[170px] items-center px-2 py-0.5 border rounded font-medium text-xs', isControlledCabinet(item) ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-600 border-blue-200']" :title="getCabinetName(item) || ''">
+                <span class="inline-flex flex-col leading-[1.2]">
+                  <span
+                    v-for="(line, idx) in splitCabinetLabel(getCabinetName(item))"
+                    :key="`${item.uuid}-cab-${idx}`"
+                    class="max-w-[154px] truncate whitespace-nowrap"
+                  >
+                    {{ line }}
+                  </span>
+                </span>
               </span>
               <span v-else class="text-xs text-gray-300">—</span>
             </td>
             <td class="px-6 py-4 text-xs text-gray-600 whitespace-nowrap">{{ getItemLocation(item) }}</td>
             <td class="px-6 py-4 text-xs text-gray-700">
-              <span class="inline-block max-w-[150px] truncate whitespace-nowrap align-middle" :title="item.batch_number || '系统批次'">{{ item.batch_number || '系统批次' }}</span>
+              <span class="inline-flex max-w-[150px] flex-col leading-[1.2] align-middle" :title="item.batch_number || '系统批次'">
+                <span
+                  v-for="(line, idx) in splitBatchLabel(item.batch_number || '系统批次')"
+                  :key="`${item.uuid}-batch-${idx}`"
+                  class="max-w-[150px] truncate whitespace-nowrap"
+                >
+                  {{ line }}
+                </span>
+              </span>
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
               <Badge :variant="getStatusVariant(item.status)" class="min-w-[56px] justify-center">{{ getStatusLabel(item.status) }}</Badge>
