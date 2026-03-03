@@ -14,6 +14,7 @@ import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Dialog from '@/components/ui/Dialog.vue'
 import { formatNumber, normalizeUnit } from '@/lib/quantity'
+import { formatCabinetDisplayName } from '@/lib/cabinet'
 import { getInventoryDisplayStatus, getInventoryStatusVariant, isArrivedStatus, isInStorageStatus, isUsedStatus } from '@/lib/reagent-status'
 
 const props = defineProps<{
@@ -30,6 +31,7 @@ const actionProcessing = ref(false)
 const consumeVolume = ref(1)
 const consumeRemarks = ref('')
 const consumeUnit = computed(() => normalizeUnit(itemData.value?.reagent_catalog?.unit, 'ml'))
+const cabinetDisplayName = computed(() => formatCabinetDisplayName(itemData.value?.cabinet || null))
 
 const isArrivalStageLog = (log: any) => {
   const action = String(log?.action || '')
@@ -247,7 +249,7 @@ const handleAction = async (actionType: 'consume' | 'dispose') => {
             <h4 class="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">库位与有效期</h4>
             <div class="space-y-3 text-sm">
               <div class="flex items-center justify-between"><span class="text-slate-500">实物位置</span><span class="font-bold text-slate-800">{{ itemData.location || '--' }}</span></div>
-              <div class="flex items-center justify-between"><span class="text-slate-500">归属柜位</span><span class="font-bold text-slate-800">{{ itemData.cabinet?.name || '公用区' }}</span></div>
+              <div class="flex items-center justify-between"><span class="text-slate-500">归属柜位</span><span class="font-bold text-slate-800">{{ cabinetDisplayName }}</span></div>
               <div class="flex items-center justify-between"><span class="text-slate-500">存储要求</span><span class="font-bold text-slate-800 text-xs">{{ itemData.reagent_catalog?.storage_condition || '常温避光' }}</span></div>
               <div class="flex items-center justify-between"><span class="text-slate-500">失效日期</span><span :class="itemData.expiry_date && new Date(itemData.expiry_date) < new Date() ? 'text-red-600 font-bold' : 'font-bold text-slate-800'">{{ itemData.expiry_date ? new Date(itemData.expiry_date).toLocaleDateString() : '长期有效' }}</span></div>
             </div>

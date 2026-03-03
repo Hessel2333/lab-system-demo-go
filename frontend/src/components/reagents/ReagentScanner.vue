@@ -7,6 +7,7 @@ import Card from '@/components/ui/Card.vue'
 import Badge from '@/components/ui/Badge.vue'
 import axios from 'axios'
 import { getInventoryDisplayStatus, isArrivedStatus, isInStorageStatus, isUsedStatus } from '@/lib/reagent-status'
+import { formatCabinetDisplayName } from '@/lib/cabinet'
 
 interface Cabinet { id: number; name: string; cabinet_type: string; location: string }
 
@@ -27,6 +28,8 @@ const toast = (msg: string, type: 'success' | 'error' = 'success') => {
     showToast.value = true
     setTimeout(() => { showToast.value = false }, 3000)
 }
+
+const cabinetLabel = (cab?: Cabinet | null) => formatCabinetDisplayName(cab || null)
 
 const loadCabinets = async (isControlled: boolean) => {
   try {
@@ -176,8 +179,7 @@ const updateStatus = async (newStatus: string) => {
                         :variant="cabinetInput === cab.id ? 'default' : 'outline'"
                         @click="() => { cabinetInput = cab.id; locationInput = cab.location; }"
                       >
-                        🗄️ {{ cab.name }}
-                        <span class="ml-1 text-[10px] opacity-60">{{ cab.location }}</span>
+                        🗄️ {{ cabinetLabel(cab) }}
                       </Button>
                     </div>
                   </div>
@@ -191,7 +193,7 @@ const updateStatus = async (newStatus: string) => {
                   </div>
                   <Button class="w-full mt-2" @click="updateStatus('在库')">
                       <PackageCheck class="mr-2 h-4 w-4" />
-                      确认入库：{{ cabinets.find(c => c.id === cabinetInput)?.name || '未选柜' }} · {{ locationInput || '...' }}
+                      确认入库：{{ cabinetLabel(cabinets.find(c => c.id === cabinetInput)) || '未选柜' }} · {{ locationInput || '...' }}
                   </Button>
               </div>
 

@@ -99,7 +99,7 @@ type ReagentLog struct {
 // ReagentCabinet 表示实验室中的一个试剂柜点位
 type ReagentCabinet struct {
 	ID           uint   `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name         string `gorm:"not null" json:"name"` // 柜子名称，如"分析团队-普通柜A"
+	Name         string `gorm:"not null" json:"name"` // 柜子名称，如"E309-普通试剂柜A"
 	CabinetType  string `json:"cabinet_type"`         // "普通试剂柜" / "易制毒制爆试剂柜"
 	DepartmentID uint   `json:"department_id"`        // 所属团队ID（0=公共）
 	Location     string `json:"location"`             // 所在房间号，如"E309"

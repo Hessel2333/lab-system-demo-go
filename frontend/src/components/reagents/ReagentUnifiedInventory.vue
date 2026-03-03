@@ -16,6 +16,7 @@ import LedgerTable from './LedgerTable.vue'
 import ItemLifecycleDialog from '@/components/reagents/ItemLifecycleDialog.vue'
 import { formatAmount, formatNumber, formatRatio, normalizeUnit } from '@/lib/quantity'
 import { getInventoryDisplayStatus, getInventoryStatusVariant, isInStorageStatus } from '@/lib/reagent-status'
+import { formatCabinetDisplayName, formatCabinetDisplayLines } from '@/lib/cabinet'
 import { fetchUsers } from '@/api/organization'
 import { useSessionStore } from '@/stores/session'
 
@@ -77,17 +78,17 @@ const tableColumns = [
   { key: 'actions', label: '操作', align: 'right' as const, class: 'w-[14%] whitespace-nowrap' },
 ]
 
-const getCabinetName = (item: ReagentItem) => item.cabinet?.name ?? (item.cabinet_id > 0 ? `柜#${item.cabinet_id}` : null)
+const getCabinetName = (item: ReagentItem) => {
+  if (item.cabinet) return formatCabinetDisplayName(item.cabinet)
+  return item.cabinet_id > 0 ? `柜#${item.cabinet_id}` : null
+}
 const isControlledCabinet = (item: ReagentItem) => item.cabinet?.cabinet_type === '易制毒制爆试剂柜'
 const getItemLocation = (item: ReagentItem) => item.cabinet?.location || item.location || '—'
 const isControlledItem = (item: ReagentItem) => !!item.reagent_catalog?.is_controlled
 
 const splitCabinetLabel = (label?: string | null) => {
-  const raw = String(label || '').trim()
-  if (!raw) return ['—']
-  const parts = raw.split(/[-/·]/).map((s) => s.trim()).filter(Boolean)
-  if (parts.length <= 1) return [raw]
-  return [parts[0]!, parts.slice(1).join('·')]
+  if (!label) return ['—']
+  return formatCabinetDisplayLines({ name: label, location: '' })
 }
 
 const splitBatchLabel = (batch?: string | null) => {

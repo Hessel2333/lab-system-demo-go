@@ -4,12 +4,54 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"lab-system-backend/internal/database"
 	"lab-system-backend/internal/models"
 )
+
+func normalizeCabinetName(name, location string) string {
+	rawName := strings.TrimSpace(name)
+	room := strings.TrimSpace(location)
+	if rawName == "" {
+		return room
+	}
+
+	parts := strings.FieldsFunc(rawName, func(r rune) bool {
+		return r == '-' || r == '/' || r == '·' || r == '—'
+	})
+	cabinetCode := ""
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if strings.Contains(part, "柜") {
+			cabinetCode = part
+			break
+		}
+	}
+	if cabinetCode == "" {
+		if len(parts) > 0 {
+			cabinetCode = strings.TrimSpace(parts[len(parts)-1])
+		} else {
+			cabinetCode = rawName
+		}
+	}
+
+	if room == "" {
+		return cabinetCode
+	}
+	if cabinetCode == "" || cabinetCode == room {
+		return room
+	}
+	if strings.HasPrefix(cabinetCode, room+"-") {
+		return cabinetCode
+	}
+	return fmt.Sprintf("%s-%s", room, cabinetCode)
+}
 
 // GetReagentCabinets 获取试剂柜列表，支持按 dept_id 或 cabinet_type 筛选
 func GetReagentCabinets(c *gin.Context) {
@@ -44,7 +86,7 @@ func CreateReagentCabinet(c *gin.Context) {
 		return
 	}
 	cabinet := models.ReagentCabinet{
-		Name:         input.Name,
+		Name:         normalizeCabinetName(input.Name, input.Location),
 		CabinetType:  input.CabinetType,
 		DepartmentID: input.DepartmentID,
 		Location:     input.Location,
@@ -80,8 +122,10 @@ func UpdateReagentCabinet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	nextName := cabinet.Name
+	nextLocation := cabinet.Location
 	if input.Name != "" {
-		cabinet.Name = input.Name
+		nextName = input.Name
 	}
 	if input.CabinetType != "" {
 		cabinet.CabinetType = input.CabinetType
@@ -90,8 +134,10 @@ func UpdateReagentCabinet(c *gin.Context) {
 		cabinet.DepartmentID = *input.DepartmentID
 	}
 	if input.Location != "" {
+		nextLocation = input.Location
 		cabinet.Location = input.Location
 	}
+	cabinet.Name = normalizeCabinetName(nextName, nextLocation)
 	cabinet.Notes = input.Notes
 
 	if err := database.DB.Save(&cabinet).Error; err != nil {
@@ -139,13 +185,14 @@ func SeedCabinets(c *gin.Context) {
 		Notes        string
 	}
 	seeds := []cabinetSeed{
-		// === 普通试剂柜（每个团队各一个）===
-		{"分析团队-普通试剂柜A", "普通试剂柜", 8, "E309", ""},
-		{"研发A组-普通试剂柜A", "普通试剂柜", 9, "F103", ""},
-		{"研发B组-普通试剂柜A", "普通试剂柜", 10, "F309", ""},
-		{"研发C组-普通试剂柜A", "普通试剂柜", 11, "G101", ""},
-		{"新材料院-普通试剂柜A", "普通试剂柜", 7, "E309", ""},
-		{"条保部-普通试剂柜A", "普通试剂柜", 12, "E309", ""},
+		// === 普通试剂柜（房间号 + 柜号；团队仅弱绑定）===
+		{"E309-普通试剂柜A", "普通试剂柜", 8, "E309", "分析团队优先使用"},
+		{"F103-普通试剂柜A", "普通试剂柜", 9, "F103", "研发A组优先使用"},
+		{"F309-普通试剂柜A", "普通试剂柜", 10, "F309", "研发B组优先使用"},
+		{"G101-普通试剂柜A", "普通试剂柜", 11, "G101", "研发C组优先使用"},
+		{"E309-普通试剂柜B", "普通试剂柜", 7, "E309", "新材料研究院优先使用"},
+		{"E309-普通试剂柜C", "普通试剂柜", 12, "E309", "条保部优先使用"},
+		{"E309-普通试剂柜D", "普通试剂柜", 0, "E309", "公共共享柜"},
 
 		// === 易制毒制爆试剂柜（统一在 F311，公共共享，共 4 个）===
 		{"F311-管控柜1号", "易制毒制爆试剂柜", 0, "F311", "双人双锁"},
@@ -159,7 +206,7 @@ func SeedCabinets(c *gin.Context) {
 	var controlledCabinets []*models.ReagentCabinet // 管控柜列表（轮流分配）
 	for _, s := range seeds {
 		cab := models.ReagentCabinet{
-			Name:         s.Name,
+			Name:         normalizeCabinetName(s.Name, s.Location),
 			CabinetType:  s.CabinetType,
 			DepartmentID: s.DepartmentID,
 			Location:     s.Location,

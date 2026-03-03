@@ -11,6 +11,7 @@ import Dialog from '@/components/ui/Dialog.vue'
 import TableSection from '@/components/ui/TableSection.vue'
 import FlowDetailDialog from '@/components/workflow/FlowDetailDialog.vue'
 import { formatRatio } from '@/lib/quantity'
+import { formatCabinetDisplayName } from '@/lib/cabinet'
 import { toast } from 'vue-sonner'
 import { useActionFeedback } from '@/lib/feedback'
 import { getInventoryDisplayStatus, getInventoryStatusVariant, isArrivedStatus, isInStorageStatus, isUsedStatus } from '@/lib/reagent-status'
@@ -125,6 +126,7 @@ const checkInCabinets = computed(() => {
 })
 
 const selectedCabinet = computed(() => checkInCabinets.value.find((c: any) => c.id === checkInCabinetId.value))
+const cabinetLabel = (cab: any) => formatCabinetDisplayName(cab)
 
 const openCheckInDialog = (item: any) => {
     checkInTarget.value = item
@@ -382,7 +384,7 @@ onMounted(() => {
           <select v-model.number="checkInCabinetId" class="h-10 w-full">
             <option :value="0">请选择试剂柜</option>
             <option v-for="cab in checkInCabinets" :key="cab.id" :value="cab.id">
-              {{ cab.name }}（{{ cab.location }}）
+              {{ cabinetLabel(cab) }}
             </option>
           </select>
         </div>

@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { Plus, Pencil, Trash2, Loader2, FlaskConical, ShieldAlert } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
+import { formatCabinetDisplayName } from '@/lib/cabinet'
 
 interface Cabinet {
   id: number
@@ -31,6 +32,7 @@ const deptName = (id: number) => {
   if (id === 0) return '公共'
   return depts.value.find(d => d.id === id)?.name ?? `ID:${id}`
 }
+const cabinetLabel = (cab: Partial<Cabinet>) => formatCabinetDisplayName(cab)
 
 const groupedCabinets = computed(() => {
   const res: Record<string, Cabinet[]> = {}
@@ -71,12 +73,15 @@ const openEdit = (c: Cabinet) => {
 const save = async () => {
   if (!form.value.name) { toast.error('柜名不能为空'); return }
   if (!form.value.cabinet_type) { toast.error('请选择柜类型'); return }
+  const normalizedName = formatCabinetDisplayName({ name: form.value.name, location: form.value.location })
+  if (!normalizedName || normalizedName === '未命名柜') { toast.error('请填写可识别的柜号名称'); return }
+  const payload = { ...form.value, name: normalizedName }
   try {
     if (isEditing.value && form.value.id) {
-      await axios.put(`/api/reagents/cabinets/${form.value.id}`, form.value)
+      await axios.put(`/api/reagents/cabinets/${form.value.id}`, payload)
       toast.success('柜点位已更新')
     } else {
-      await axios.post('/api/reagents/cabinets', form.value)
+      await axios.post('/api/reagents/cabinets', payload)
       toast.success('已新建试剂柜点位')
     }
     showDialog.value = false
@@ -106,7 +111,7 @@ onMounted(fetch)
     <div class="flex items-center justify-between">
       <div>
         <h3 class="text-base font-bold text-gray-900">试剂柜管理</h3>
-        <p class="text-xs text-gray-500 mt-0.5">管理各团队的试剂柜点位，区分普通柜和管控品专柜</p>
+        <p class="text-xs text-gray-500 mt-0.5">命名规范：实验室房间号 + 柜号（如 E309-普通试剂柜A）；团队仅做弱绑定</p>
       </div>
       <button @click="openCreate"
         class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm shadow-blue-200">
@@ -133,7 +138,7 @@ onMounted(fetch)
             :class="['group relative border rounded-xl p-4 hover:shadow-sm transition-all', type === '易制毒制爆试剂柜' ? 'border-red-200 bg-red-50/40' : 'border-blue-100 bg-blue-50/30']">
             <div class="flex items-start justify-between">
               <div class="min-w-0 flex-1">
-                <p class="font-semibold text-sm text-gray-900 truncate">🗄️ {{ cab.name }}</p>
+                <p class="font-semibold text-sm text-gray-900 truncate">🗄️ {{ cabinetLabel(cab) }}</p>
                 <p class="text-xs text-gray-500 mt-0.5">{{ deptName(cab.department_id) }} · {{ cab.location || '位置未设置' }}</p>
                 <p v-if="cab.notes" class="text-xs text-gray-400 mt-1 truncate">{{ cab.notes }}</p>
               </div>
@@ -164,7 +169,7 @@ onMounted(fetch)
         <div class="space-y-4">
           <div class="space-y-1.5">
             <label class="text-sm font-semibold text-gray-700">柜名 <span class="text-red-500">*</span></label>
-            <input v-model="form.name" placeholder="例如：分析团队-普通试剂柜B"
+            <input v-model="form.name" placeholder="例如：普通试剂柜A（保存时自动规范为 E309-普通试剂柜A）"
               class="w-full h-10 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" />
           </div>
           <div class="space-y-1.5">
@@ -177,7 +182,7 @@ onMounted(fetch)
             </div>
           </div>
           <div class="space-y-1.5">
-            <label class="text-sm font-semibold text-gray-700">归属团队</label>
+            <label class="text-sm font-semibold text-gray-700">弱绑定团队（可选）</label>
             <select v-model="form.department_id"
               class="w-full h-10 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none">
               <option :value="0">公共（全体可用）</option>
