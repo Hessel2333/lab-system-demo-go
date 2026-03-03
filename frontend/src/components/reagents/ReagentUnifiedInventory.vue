@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import axios from 'axios'
 import { toast } from 'vue-sonner'
 import {
-  Loader2, MapPin, FlaskConical, Users, Search,
-  ChevronDown, ChevronRight, AlertTriangle,
-  MinusCircle, Trash2, FileText
+  Loader2, Search, AlertTriangle, FileText
 } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -14,8 +12,10 @@ import TableSection from '@/components/ui/TableSection.vue'
 import Input from '@/components/ui/Input.vue'
 import LedgerTable from './LedgerTable.vue'
 import ItemLifecycleDialog from '@/components/reagents/ItemLifecycleDialog.vue'
-import { formatAmount, formatNumber, formatRatio, normalizeUnit } from '@/lib/quantity'
+import { formatAmount, formatNumber, normalizeUnit } from '@/lib/quantity'
 import { getInventoryDisplayStatus, getInventoryStatusVariant, isInStorageStatus } from '@/lib/reagent-status'
+import { fetchUsers } from '@/api/organization'
+import { useSessionStore } from '@/stores/session'
 
 // ——— 类型定义 ———
 interface ReagentItem {
@@ -28,6 +28,7 @@ interface ReagentItem {
     name: string
     cabinet_type: string
     location: string
+    department_id?: number
   }
   status: string
   capacity: number
@@ -44,15 +45,9 @@ interface ReagentItem {
   }
 }
 
-interface TeamGroup {
-  department_id: number
-  department_name: string
-  items: ReagentItem[]
-  total_count: number
-}
-
 // ——— 视图状态 ———
 const viewMode = ref<'table' | 'team'>('team')
+const sessionStore = useSessionStore()
 
 // ——— 表格视图状态 ———
 const allItems = ref<ReagentItem[]>([])
@@ -81,11 +76,9 @@ const isControlledCabinet = (item: ReagentItem) => item.cabinet?.cabinet_type ==
 const getItemLocation = (item: ReagentItem) => item.cabinet?.location || item.location || '—'
 const isControlledItem = (item: ReagentItem) => !!item.reagent_catalog?.is_controlled
 
-// ——— 团队视图状态 ———
-const allGroups = ref<TeamGroup[]>([])
-const isLoadingTeam = ref(false)
-const selectedDeptId = ref<number | null>(null)
-const expandedCategories = ref<Set<string>>(new Set())
+// ——— 团队范围状态 ———
+const currentUserDeptId = ref<number | null>(null)
+const resolvingDept = ref(false)
 
 // ——— 消耗弹窗 ———
 const consumeDialog = ref({
@@ -127,30 +120,53 @@ const fetchTable = async () => {
   }
 }
 
-const fetchTeam = async () => {
-  isLoadingTeam.value = true
+const resolveCurrentUserDept = async () => {
+  resolvingDept.value = true
   try {
-    const res = await axios.get('/api/reagents/team-inventory')
-    allGroups.value = (res.data ?? []).filter((g: TeamGroup) => g.department_id >= 0)
-    if (allGroups.value.length > 0 && selectedDeptId.value === null) {
-      selectedDeptId.value = allGroups.value[0]?.department_id ?? null
-    }
-  } catch { /* ignore */ } finally {
-    isLoadingTeam.value = false
+    const users = await fetchUsers()
+    const me = users.find((user) => user.ID === sessionStore.currentUserId)
+    currentUserDeptId.value = me?.department_id ?? null
+  } catch {
+    currentUserDeptId.value = null
+  } finally {
+    resolvingDept.value = false
   }
 }
 
 const fetchAll = () => { 
   fetchTable()
-  fetchTeam()
   fetchPendingArrivals()
 }
+
+watch(
+  () => sessionStore.currentUserId,
+  () => {
+    resolveCurrentUserDept()
+  },
+  { immediate: true }
+)
 
 onMounted(fetchAll)
 
 // ——— 表格视图计算 ———
+const getItemDepartmentId = (item: ReagentItem) => {
+  const raw = item.cabinet?.department_id
+  if (typeof raw !== 'number' || Number.isNaN(raw)) return null
+  return raw
+}
+
+const isInTeamScope = (item: ReagentItem) => {
+  if (viewMode.value !== 'team') return true
+  const deptId = getItemDepartmentId(item)
+  if (deptId === 0) return true
+  if (currentUserDeptId.value === null) return true
+  return deptId === currentUserDeptId.value
+}
+
+const scopedItems = computed(() => allItems.value.filter((item) => isInTeamScope(item)))
+
 const filteredItems = computed(() => {
-  let r = allItems.value
+  let r = scopedItems.value
   if (statusFilter.value !== '全部') r = r.filter(i => getInventoryDisplayStatus(i.status) === statusFilter.value)
   if (cabinetFilter.value === '普通柜') r = r.filter(i => i.cabinet?.cabinet_type === '普通试剂柜')
   else if (cabinetFilter.value === '管控柜') r = r.filter(i => i.cabinet?.cabinet_type === '易制毒制爆试剂柜')
@@ -160,7 +176,8 @@ const filteredItems = computed(() => {
       i.uuid.toLowerCase().includes(q) ||
       i.reagent_catalog?.name?.toLowerCase().includes(q) ||
       i.reagent_catalog?.cas_number?.toLowerCase().includes(q) ||
-      i.location?.toLowerCase().includes(q)
+      getCabinetName(i)?.toLowerCase().includes(q) ||
+      getItemLocation(i).toLowerCase().includes(q)
     )
   }
   return r
@@ -171,28 +188,9 @@ const paginatedItems = computed(() => filteredItems.value.slice((currentPage.val
 const setStatusFilter = (s: string) => { statusFilter.value = s; currentPage.value = 1 }
 const setCabinetFilter = (c: string) => { cabinetFilter.value = c; currentPage.value = 1 }
 
-// ——— 团队视图计算 ———
-const selectedGroup = computed<TeamGroup | null>(() =>
-  selectedDeptId.value === null ? null : allGroups.value.find(g => g.department_id === selectedDeptId.value) ?? null
-)
-const totalInStock = computed(() => selectedGroup.value?.items?.length || 0)
-const groupedByCategory = computed(() => {
-  if (!selectedGroup.value?.items) return {}
-  return selectedGroup.value.items.reduce((acc, item) => {
-    const cat = item.reagent_catalog?.name || '未知品类'
-    if (!acc[cat]) acc[cat] = []
-    acc[cat].push(item)
-    return acc
-  }, {} as Record<string, ReagentItem[]>)
+watch(viewMode, () => {
+  currentPage.value = 1
 })
-const categoryCount = computed(() => Object.keys(groupedByCategory.value).length)
-
-const toggleCategory = (key: string) => {
-  if (expandedCategories.value.has(key)) expandedCategories.value.delete(key)
-  else expandedCategories.value.add(key)
-  expandedCategories.value = new Set(expandedCategories.value)
-}
-const isExpanded = (key: string) => expandedCategories.value.has(key)
 
 // ——— 操作：领用 ———
 const openConsumeDialog = (item: ReagentItem) => {
@@ -240,11 +238,6 @@ const remainingPct = (item: ReagentItem) => {
   if (!item.capacity || item.capacity === 0) return 0
   return Math.round((item.remaining_volume / item.capacity) * 100)
 }
-const isNearExpiry = (item: ReagentItem) => {
-  if (!item.expiry_date) return false
-  const diff = new Date(item.expiry_date).getTime() - Date.now()
-  return diff > 0 && diff <= 90 * 24 * 3600 * 1000
-}
 const getExpiryInfo = (dateStr: string) => {
   if (!dateStr || dateStr.startsWith('0001-01-01')) return { text: '未知', class: 'text-gray-400' }
   const expiry = new Date(dateStr)
@@ -255,12 +248,6 @@ const getExpiryInfo = (dateStr: string) => {
   if (diffDays <= 30) return { text: `${diffDays} 天后到期`, class: 'text-orange-600 font-medium' }
   if (diffDays <= 90) return { text: `${diffDays} 天后到期`, class: 'text-yellow-600' }
   return { text: expiry.toLocaleDateString('zh-CN'), class: 'text-gray-500' }
-}
-const formatDate = (d: string) => {
-  if (!d || d.startsWith('0001')) return '-'
-  const dt = new Date(d)
-  if (isNaN(dt.getFullYear()) || dt.getFullYear() < 1900) return '-'
-  return dt.toLocaleDateString('zh-CN')
 }
 const getStatusLabel = (status: string) => getInventoryDisplayStatus(status)
 const getStatusVariant = (status: string): any => getInventoryStatusVariant(status)
@@ -290,20 +277,24 @@ const getRemainingColor = (pct: number) => {
         </Button>
     </div>
 
-    <TableSection title="库存台账" description="统一展示团队库存与全库明细：管控试剂支持消耗登记，普通试剂仅执行耗尽核销">
+    <TableSection title="库存台账" description="统一表格模板：团队台账默认显示“当前团队 + 公共库”，全库台账显示全部库存。">
       <template #actions>
         <Button @click="fetchAll" variant="outline" size="sm">刷新台账</Button>
       </template>
 
       <template #toolbar>
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 w-full">
-          <div v-if="viewMode === 'table'" class="relative w-full sm:w-80">
+          <div class="relative w-full sm:w-80">
             <Search class="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
             <Input v-model="searchQuery" class="pl-9" placeholder="搜索名称/CAS/库位..." />
           </div>
-          <div v-else class="text-sm text-gray-500">按团队分组展示，共 {{ allGroups.length }} 个团队</div>
+          <div v-if="viewMode === 'team'" class="text-xs text-slate-500 sm:ml-auto">
+            <span v-if="resolvingDept">正在识别当前团队...</span>
+            <span v-else-if="currentUserDeptId !== null">当前团队 + 公共库，共 {{ scopedItems.length }} 条</span>
+            <span v-else>未识别到团队，当前显示全库数据（可继续搜索筛选）</span>
+          </div>
 
-          <div class="apple-segmented shrink-0 sm:ml-auto">
+          <div class="apple-segmented shrink-0" :class="viewMode === 'table' ? 'sm:ml-auto' : ''">
             <button @click="viewMode='team'" :class="['apple-segmented-btn', viewMode==='team' ? 'apple-segmented-btn-active' : 'apple-segmented-btn-idle']">
               团队台账
             </button>
@@ -314,111 +305,8 @@ const getRemainingColor = (pct: number) => {
         </div>
       </template>
 
-    <!-- ================================ 团队视图 ================================ -->
-    <div v-show="viewMode === 'team'">
-      <div v-if="isLoadingTeam" class="flex justify-center py-16">
-        <Loader2 class="w-8 h-8 animate-spin text-gray-400" />
-      </div>
-      <div v-else-if="allGroups.length === 0" class="apple-table-empty text-gray-500">
-        <FlaskConical class="w-12 h-12 mx-auto mb-4 text-gray-300" />
-        <p class="text-sm">暂无在库试剂数据</p>
-      </div>
-      <div v-else class="flex gap-5">
-        <!-- 左侧：团队选择 -->
-        <div class="w-44 shrink-0 space-y-1.5">
-          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider px-2 mb-2">团队列表</p>
-          <button
-            v-for="group in allGroups"
-            :key="group.department_id"
-            @click="selectedDeptId = group.department_id"
-            :class="['w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-between', selectedDeptId === group.department_id ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-100']"
-          >
-            <span class="flex items-center gap-2">
-              <Users class="w-3.5 h-3.5 shrink-0" />{{ group.department_name }}
-            </span>
-            <span :class="['text-xs px-1.5 py-0.5 rounded-full font-normal', selectedDeptId === group.department_id ? 'bg-white/20' : 'bg-gray-200 text-gray-500']">{{ group.total_count }}</span>
-          </button>
-        </div>
-
-        <!-- 右侧：品类折叠列表 -->
-        <div class="flex-1 min-w-0 space-y-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <h3 class="text-base font-bold text-gray-900">{{ selectedGroup?.department_name }} · 在库台账</h3>
-              <p class="text-xs text-gray-500 mt-0.5">共 <span class="font-semibold">{{ totalInStock }}</span> 瓶，涉及 <span class="font-semibold">{{ categoryCount }}</span> 个品类</p>
-            </div>
-            <button @click="fetchTeam" class="text-xs text-blue-600 hover:underline">刷新</button>
-          </div>
-
-          <div v-for="(items, catalogName) in groupedByCategory" :key="String(catalogName)" class="rounded-xl border border-gray-200 overflow-hidden">
-            <button class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left" @click="toggleCategory(String(catalogName))">
-              <div class="flex items-center gap-3">
-                <component :is="isExpanded(String(catalogName)) ? ChevronDown : ChevronRight" class="w-4 h-4 text-gray-400 shrink-0" />
-                <span class="font-bold text-gray-900 text-sm tracking-tight">{{ catalogName }}</span>
-                <span class="text-xs text-gray-400 font-mono">{{ items[0]?.reagent_catalog?.formula ?? '' }}</span>
-                <Badge v-if="items[0]?.reagent_catalog?.is_controlled" variant="destructive" class="px-1.5 h-4.5 text-[10px]">管控品</Badge>
-                <Badge variant="info" class="px-1.5 h-4.5 text-[10px]">{{ items[0]?.reagent_catalog?.category }}</Badge>
-              </div>
-              <div class="flex items-center gap-3 text-xs text-gray-500 shrink-0">
-                <span>{{ items.length }} 瓶在库</span>
-                <span class="flex items-center gap-0.5"><MapPin class="w-3 h-3" />{{ [...new Set(items.map(i => getItemLocation(i)))].join(' / ') }}</span>
-              </div>
-            </button>
-
-            <div v-if="isExpanded(String(catalogName))" class="divide-y divide-gray-100">
-              <div v-for="item in items" :key="item.uuid" class="group flex items-center px-4 py-2.5 bg-white hover:bg-gray-50 gap-3 text-sm">
-                <!-- 条码变成可点击按钮 -->
-                <button @click="openLifecycleDialog(item.uuid)" class="font-mono text-[11px] text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 w-24 shrink-0" title="查看生命周期档案">
-                  <FileText class="w-3 h-3"/> {{ item.uuid.substring(0,8).toUpperCase() }}
-                </button>
-                <!-- 试剂柜标签 -->
-                <span v-if="item.cabinet_id > 0" :class="['text-[10px] px-1.5 py-0.5 border rounded shrink-0 font-medium', isControlledCabinet(item) ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-600 border-blue-200']">
-                  {{ getCabinetName(item) }}
-                </span>
-                <span class="flex items-center gap-1 text-xs text-gray-600 w-16 shrink-0"><MapPin class="w-3 h-3 text-gray-400" /> {{ getItemLocation(item) }}</span>
-                <div class="flex items-center gap-2 flex-1 min-w-0">
-                  <div class="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden shrink-0">
-                    <div class="h-full rounded-full transition-all" :class="remainingPct(item) > 50 ? 'bg-green-500' : remainingPct(item) > 20 ? 'bg-yellow-500' : 'bg-red-500'" :style="`width: ${remainingPct(item)}%`"></div>
-                  </div>
-                  <span class="text-xs text-gray-500 whitespace-nowrap">{{ formatRatio(item.remaining_volume, item.capacity, item.reagent_catalog?.unit, 'ml') }}</span>
-                </div>
-                <span class="text-xs text-gray-400 font-mono shrink-0 hidden xl:block">{{ item.batch_number }}</span>
-                <span class="flex items-center gap-1 text-xs shrink-0 w-24" :class="isNearExpiry(item) ? 'text-orange-600' : 'text-gray-400'">
-                  <AlertTriangle v-if="isNearExpiry(item)" class="w-3 h-3" />
-                  {{ formatDate(item.expiry_date) }}
-                </span>
-                <div class="flex items-center gap-2 ml-auto pl-4 border-l border-gray-100 shrink-0">
-                  <Button @click.stop="openLifecycleDialog(item.uuid)" variant="outline" size="sm" class="h-7 px-2 text-[11px]">
-                    流转单
-                  </Button>
-                  <Button
-                    v-if="isInStorageStatus(item.status) && isControlledItem(item)"
-                    @click.stop="openConsumeDialog(item)"
-                    variant="outline"
-                    size="sm"
-                    class="h-7 px-2 text-[11px] border-blue-100 text-blue-600 hover:bg-blue-50"
-                  >
-                    <MinusCircle class="w-3.5 h-3.5 mr-1" /> 使用
-                  </Button>
-                  <Button
-                    v-else-if="isInStorageStatus(item.status)"
-                    @click.stop="markAsEmpty(item)"
-                    variant="destructive"
-                    size="sm"
-                    class="h-7 px-2 text-[11px]"
-                  >
-                    <Trash2 class="w-3.5 h-3.5 mr-1" /> 用尽
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ================================ 表格视图 ================================ -->
-    <div v-show="viewMode === 'table'">
+    <!-- ================================ 统一表格视图 ================================ -->
+    <div>
       <!-- 筛选条 -->
       <div class="mb-3 flex w-full flex-wrap gap-2">
         <div class="apple-segmented">
