@@ -66,15 +66,15 @@ const pageSize = 15
 const statusOptions = ['全部', '已入库', '已到货', '已耗尽']
 const cabinetOptions = ['全部', '普通柜', '管控柜']
 const tableColumns = [
-  { key: 'reagent', label: '试剂名称' },
-  { key: 'barcode', label: '系统条码' },
-  { key: 'remaining', label: '剩余量' },
-  { key: 'cabinet', label: '试剂柜' },
-  { key: 'location', label: '库位' },
-  { key: 'batch', label: '批次来源' },
-  { key: 'status', label: '状态' },
-  { key: 'expiry', label: '有效期' },
-  { key: 'actions', label: '操作', align: 'right' as const },
+  { key: 'reagent', label: '试剂名称', class: 'min-w-[190px]' },
+  { key: 'barcode', label: '系统条码', class: 'min-w-[160px]' },
+  { key: 'remaining', label: '剩余量', class: 'min-w-[180px]' },
+  { key: 'cabinet', label: '试剂柜', class: 'min-w-[190px]' },
+  { key: 'location', label: '库位', class: 'min-w-[120px]' },
+  { key: 'batch', label: '批次来源', class: 'min-w-[160px]' },
+  { key: 'status', label: '状态', class: 'min-w-[100px]' },
+  { key: 'expiry', label: '有效期', class: 'min-w-[120px]' },
+  { key: 'actions', label: '操作', align: 'right' as const, class: 'min-w-[170px]' },
 ]
 
 const getCabinetName = (item: ReagentItem) => item.cabinet?.name ?? (item.cabinet_id > 0 ? `柜#${item.cabinet_id}` : null)
@@ -559,17 +559,19 @@ const getRemainingColor = (pct: number) => {
               </div>
             </td>
             <td class="px-6 py-4">
-              <span v-if="item.cabinet_id > 0" :class="['text-xs px-2 py-0.5 border rounded font-medium', isControlledCabinet(item) ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-600 border-blue-200']">
-                {{ getCabinetName(item) }}
+              <span v-if="item.cabinet_id > 0" :class="['inline-flex max-w-[180px] items-center px-2 py-0.5 border rounded font-medium text-xs', isControlledCabinet(item) ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-600 border-blue-200']" :title="getCabinetName(item) || ''">
+                <span class="truncate whitespace-nowrap">{{ getCabinetName(item) }}</span>
               </span>
               <span v-else class="text-xs text-gray-300">—</span>
             </td>
-            <td class="px-6 py-4 text-xs text-gray-600">{{ getItemLocation(item) }}</td>
-            <td class="px-6 py-4 text-xs text-gray-700">{{ item.batch_number || '系统批次' }}</td>
-            <td class="px-6 py-4">
-              <Badge :variant="getStatusVariant(item.status)">{{ getStatusLabel(item.status) }}</Badge>
+            <td class="px-6 py-4 text-xs text-gray-600 whitespace-nowrap">{{ getItemLocation(item) }}</td>
+            <td class="px-6 py-4 text-xs text-gray-700">
+              <span class="inline-block max-w-[150px] truncate whitespace-nowrap align-middle" :title="item.batch_number || '系统批次'">{{ item.batch_number || '系统批次' }}</span>
             </td>
-            <td class="px-6 py-4">
+            <td class="px-6 py-4 whitespace-nowrap">
+              <Badge :variant="getStatusVariant(item.status)" class="min-w-[56px] justify-center">{{ getStatusLabel(item.status) }}</Badge>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
               <span :class="['text-xs', getExpiryInfo(item.expiry_date).class]">{{ getExpiryInfo(item.expiry_date).text }}</span>
             </td>
             <td class="px-6 py-4 text-right">
