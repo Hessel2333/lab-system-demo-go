@@ -2,6 +2,7 @@
 import Dialog from '@/components/ui/Dialog.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
+import Textarea from '@/components/ui/Textarea.vue'
 import { ref } from 'vue'
 import { Sparkles } from 'lucide-vue-next'
 
@@ -60,11 +61,11 @@ const getAIRecommendation = () => {
 
           <div>
               <label class="text-sm font-medium mb-1 block">规格要求</label>
-              <textarea 
+              <Textarea
                   v-model="form.specs"
-                  class="flex min-h-[60px] w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  class="min-h-[60px]"
                   placeholder="请输入详细规格参数..."
-              ></textarea>
+              />
           </div>
           <div>
               <label class="text-sm font-medium mb-1 block">预算范围</label>
@@ -72,11 +73,11 @@ const getAIRecommendation = () => {
           </div>
           <div>
               <label class="text-sm font-medium mb-1 block">申请理由</label>
-              <textarea 
+              <Textarea
                   v-model="form.reason"
-                  class="flex min-h-[60px] w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  class="min-h-[60px]"
                   placeholder="项目需求..."
-              ></textarea>
+              />
           </div>
       </div>
       <template #footer>

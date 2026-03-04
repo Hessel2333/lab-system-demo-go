@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { X } from 'lucide-vue-next'
+import Input from '@/components/ui/Input.vue'
+import Select from '@/components/ui/Select.vue'
 import type { User, Department } from '@/api/organization'
 
 const props = defineProps<{
@@ -101,31 +103,31 @@ const isEdit = computed(() => !!props.editUser)
       <form @submit.prevent="handleSubmit" class="space-y-4">
           <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">真实姓名</label>
-              <input v-model="formData.real_name" required type="text" class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border" placeholder="例如：张三">
+              <Input v-model="formData.real_name" required type="text" placeholder="例如：张三" />
           </div>
           
            <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">工号/用户名</label>
-              <input v-model="formData.username" required type="text" class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border" placeholder="例如：zhangsan">
+              <Input v-model="formData.username" required type="text" placeholder="例如：zhangsan" />
           </div>
           
           <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">角色</label>
-              <select v-model="formData.role" class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border">
+              <Select v-model="formData.role">
                   <option v-for="role in roles" :key="role.value" :value="role.value">
                       {{ role.label }}
                   </option>
-              </select>
+              </Select>
           </div>
 
           <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">所属组织</label>
-              <select v-model.number="formData.department_id" class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border">
+              <Select v-model.number="formData.department_id">
                   <option :value="0" disabled>请选择组织节点</option>
                   <option v-for="dept in departmentOptions" :key="dept.id" :value="dept.id">
                       {{ dept.label }}
                   </option>
-              </select>
+              </Select>
           </div>
 
           <div class="mt-6 flex justify-end gap-3 pt-2">

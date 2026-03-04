@@ -2,9 +2,10 @@
 import Dialog from '@/components/ui/Dialog.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
+import Select from '@/components/ui/Select.vue'
+import Textarea from '@/components/ui/Textarea.vue'
 import { ref } from 'vue'
 import { updateInstrumentStatus } from '@/api/instruments'
-import { ChevronDown } from 'lucide-vue-next'
 
 const props = defineProps<{
   open: boolean
@@ -43,16 +44,13 @@ const submit = async () => {
         </div>
         <div>
              <label class="text-sm font-medium mb-1.5 block text-gray-700">新状态</label>
-             <div class="relative">
-                 <select v-model="form.status" class="flex h-10 w-full appearance-none rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
-                     <option value="active">空闲 / 可用</option>
-                     <option value="in_use">使用中</option>
-                     <option value="maintenance">维护中</option>
-                     <option value="fault">故障 / 维修</option>
-                     <option value="retired">已报废</option>
-                 </select>
-                 <ChevronDown class="absolute right-3 top-3 h-4 w-4 opacity-50 pointer-events-none" />
-             </div>
+             <Select v-model="form.status">
+                 <option value="active">空闲 / 可用</option>
+                 <option value="in_use">使用中</option>
+                 <option value="maintenance">维护中</option>
+                 <option value="fault">故障 / 维修</option>
+                 <option value="retired">已报废</option>
+             </Select>
         </div>
         <div>
             <label class="text-sm font-medium mb-1.5 block text-gray-700">操作员</label>
@@ -60,11 +58,11 @@ const submit = async () => {
         </div>
         <div>
             <label class="text-sm font-medium mb-1.5 block text-gray-700">备注原因</label>
-            <textarea 
+            <Textarea
                 v-model="form.reason"
-                class="flex min-h-[100px] w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+                class="min-h-[100px] resize-none"
                 placeholder="请输入状态变更原因..."
-            ></textarea>
+            />
         </div>
     </div>
     <template #footer>

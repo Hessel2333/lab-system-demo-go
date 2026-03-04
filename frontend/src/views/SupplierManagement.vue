@@ -4,6 +4,7 @@ import Dialog from '@/components/ui/Dialog.vue'
 import TableSection from '@/components/ui/TableSection.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
+import Select from '@/components/ui/Select.vue'
 import { Plus, Search, Loader2 } from 'lucide-vue-next'
 
 interface Supplier {
@@ -214,41 +215,41 @@ const filteredSuppliers = computed(() => {
             <div class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">供应商名称</label>
-                    <input v-model="currentSupplier.name" type="text" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border">
+                    <Input v-model="currentSupplier.name" type="text" />
                 </div>
                 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">类型</label>
-                        <select v-model="currentSupplier.type" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border">
+                        <Select v-model="currentSupplier.type">
                             <option value="instrument">仪器设备</option>
                             <option value="reagent">试剂耗材</option>
                             <option value="general">综合服务</option>
-                        </select>
+                        </Select>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">状态</label>
-                        <select v-model="currentSupplier.status" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border">
+                        <Select v-model="currentSupplier.status">
                             <option value="active">合作中</option>
                             <option value="blacklist">已拉黑</option>
-                        </select>
+                        </Select>
                     </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">联系人</label>
-                        <input v-model="currentSupplier.contact_person" type="text" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border">
+                        <Input v-model="currentSupplier.contact_person" type="text" />
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">联系电话</label>
-                        <input v-model="currentSupplier.phone" type="text" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border">
+                        <Input v-model="currentSupplier.phone" type="text" />
                     </div>
                 </div>
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">综合评分 (0-5)</label>
-                    <input v-model.number="currentSupplier.rating" type="number" step="0.1" max="5" min="0" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border">
+                    <Input v-model.number="currentSupplier.rating" type="number" step="0.1" max="5" min="0" />
                 </div>
 
                 <div class="flex justify-end gap-3 mt-6">

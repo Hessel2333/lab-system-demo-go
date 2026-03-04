@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import Dialog from '@/components/ui/Dialog.vue'
 import Button from '@/components/ui/Button.vue'
+import Select from '@/components/ui/Select.vue'
+import Textarea from '@/components/ui/Textarea.vue'
 import { ref } from 'vue'
 import { CheckSquare, AlertTriangle } from 'lucide-vue-next'
 
@@ -55,19 +57,19 @@ const repairForm = ref({
           </div>
           <div>
               <label class="text-sm font-medium mb-1 block">故障现象描述</label>
-              <textarea 
+              <Textarea
                   v-model="repairForm.issue"
-                  class="flex min-h-[100px] w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+                  class="min-h-[100px]"
                   placeholder="请详细描述故障现象、错误代码..."
-              ></textarea>
+              />
           </div>
           <div>
                <label class="text-sm font-medium mb-1 block">紧急程度</label>
-               <select v-model="repairForm.urgency" class="w-full h-10 rounded-lg border border-input px-3">
+               <Select v-model="repairForm.urgency">
                    <option value="normal">一般 - 不影响核心功能</option>
                    <option value="urgent">紧急 - 设备完全无法使用</option>
                    <option value="critical">危急 - 存在安全隐患</option>
-               </select>
+               </Select>
           </div>
       </div>
 
