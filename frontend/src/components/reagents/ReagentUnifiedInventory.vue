@@ -383,24 +383,21 @@ const getRemainingColor = (pct: number) => {
   <div class="space-y-4">
     <div
       v-if="pendingArrivals.length > 0"
-      class="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-2 duration-500"
+      class="flex flex-col gap-2 rounded-xl border border-amber-200 bg-white px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
     >
-      <div class="flex items-center gap-3">
-        <div class="p-2 bg-amber-100 text-amber-600 rounded-full">
-          <AlertTriangle class="h-5 w-5" />
-        </div>
-        <div>
-          <p class="text-amber-900 font-bold tracking-tight">您有 {{ pendingArrivals.length }} 件试剂待入库</p>
-          <p class="text-amber-700 text-xs mt-0.5">实物已送至暂存区，请尽快领取并办理入库以进入库存台账</p>
-        </div>
+      <div class="flex items-center gap-2.5 min-w-0">
+        <AlertTriangle class="h-4.5 w-4.5 shrink-0 text-amber-600" />
+        <p class="truncate text-sm font-semibold text-amber-900">
+          当前有 {{ pendingArrivals.length }} 件试剂处于“暂存区待入库”
+        </p>
       </div>
       <Button
         @click="emit('switch-to-arrival')"
         variant="outline"
         size="sm"
-        class="bg-white border-amber-200 hover:bg-amber-100 text-amber-700 font-bold transition-all"
+        class="shrink-0 border-amber-200 bg-amber-50/70 text-amber-700 hover:bg-amber-100"
       >
-        立即办理入库 →
+        去处理入库
       </Button>
     </div>
 

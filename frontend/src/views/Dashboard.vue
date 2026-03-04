@@ -5,7 +5,7 @@ import { RouterLink } from 'vue-router'
 import Card from '@/components/ui/Card.vue'
 import Badge from '@/components/ui/Badge.vue'
 import { useSessionStore } from '@/stores/session'
-import { ArrowRight, ClipboardCheck, FileSpreadsheet, PackageCheck, ShoppingCart, TestTube } from 'lucide-vue-next'
+import { ArrowRight, ClipboardCheck, FileSpreadsheet, PackageCheck, ShoppingCart, TestTube, AlertTriangle } from 'lucide-vue-next'
 
 const ReagentOpsDashboard = defineAsyncComponent(() => import('@/components/reagents/ReagentOpsDashboard.vue'))
 
@@ -28,9 +28,29 @@ const stats = ref({
   alerts: [] as any[],
   category_distribution: [] as { category: string; count: number }[],
   recent_usage_trend: [] as { date: string; count: number }[],
+  role_focus: {} as Record<string, any>,
 })
 
 const roleLabel = computed(() => sessionStore.currentRoleLabel)
+
+const pendingCheckinCount = computed(() => {
+  if (sessionStore.currentRole === 'researcher') {
+    return Number(stats.value?.role_focus?.my_pending_checkin || 0)
+  }
+  return Number(stats.value?.pending_checkin_items || stats.value?.role_focus?.pending_checkin_items || 0)
+})
+
+const pendingCheckinRoute = computed(() => {
+  if (sessionStore.currentRole === 'researcher') return { path: '/reagents', query: { tab: 'arrival-confirm' } }
+  if (sessionStore.currentRole === 'procurement') return { path: '/reagents', query: { tab: 'receiving' } }
+  return { path: '/reagents', query: { tab: 'unified-inventory' } }
+})
+
+const pendingCheckinHint = computed(() => {
+  if (sessionStore.currentRole === 'researcher') return '请在到货确认中完成实验室与试剂柜入库。'
+  if (sessionStore.currentRole === 'procurement') return '请协同研发尽快完成待入库条目闭环。'
+  return '请关注待入库条目，推动跨角色处理闭环。'
+})
 
 const quickActions = computed(() => {
   if (sessionStore.currentRole === 'researcher') {
@@ -106,6 +126,26 @@ watch(() => sessionStore.currentUserId, fetchStats)
           进入
           <ArrowRight class="ml-1 h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
         </div>
+      </RouterLink>
+    </div>
+
+    <div
+      v-if="pendingCheckinCount > 0"
+      class="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div class="flex items-start gap-2.5">
+        <AlertTriangle class="mt-0.5 h-4.5 w-4.5 shrink-0 text-amber-600" />
+        <div>
+          <p class="text-sm font-semibold text-amber-900">待入库提醒：{{ pendingCheckinCount }} 条</p>
+          <p class="mt-0.5 text-xs text-amber-800">{{ pendingCheckinHint }}</p>
+        </div>
+      </div>
+      <RouterLink
+        :to="pendingCheckinRoute"
+        class="inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+      >
+        立即查看
+        <ArrowRight class="ml-1 h-3.5 w-3.5" />
       </RouterLink>
     </div>
 
