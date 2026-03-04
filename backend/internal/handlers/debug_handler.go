@@ -24,6 +24,7 @@ func SeedReagents(c *gin.Context) {
 	tx.Exec("DELETE FROM procurement_batch_items")
 	tx.Exec("DELETE FROM procurement_batches")
 	tx.Exec("DELETE FROM reagent_requests")
+	tx.Exec("DELETE FROM reagent_dispense_requests")
 	// tx.Exec("DELETE FROM reagent_catalogs") // Let's keep catalogs or recreate them if not exists to avoid violating foreign keys from other places if any
 
 	// 0.1 Ensure Organization exists (Fixed IDs)
@@ -269,7 +270,8 @@ func SeedTeamInventory(c *gin.Context) {
 			for i := 0; i < entry.quantity; i++ {
 				capacity := 500.0
 				remaining := capacity
-				if i == entry.quantity-1 && entry.quantity > 1 {
+				isControlled := cat.IsControlled
+				if isControlled && i == entry.quantity-1 && entry.quantity > 1 {
 					remaining = float64(100 + rand.Intn(300)) // 最后一瓶是被领用过的
 				}
 
@@ -297,7 +299,7 @@ func SeedTeamInventory(c *gin.Context) {
 				})
 
 				// 2. 扫码领用 (只有用掉部分容量的那一瓶)
-				if remaining < capacity {
+				if isControlled && remaining < capacity {
 					tx.Create(&models.ReagentLog{
 						ReagentItemID: item.UUID,
 						UserID:        t.userID,
@@ -347,7 +349,7 @@ func SeedTeamInventory(c *gin.Context) {
 		UUID:             uuid.New().String(),
 		ReagentCatalogID: reqOverdue.ReagentCatalogID,
 		Status:           "已到货",
-		Location:         "采购部实验桌收发台",
+		Location:         ReagentStagingArea,
 		Capacity:         500.0,
 		RemainingVolume:  500.0,
 		BatchNumber:      fmt.Sprintf("BATCH-TEST-%d", rand.Intn(9000)),
